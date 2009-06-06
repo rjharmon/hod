@@ -1,0 +1,42 @@
+<%init>
+use Image::Size;
+use HTTP::File;
+use Apache;
+Apache->request->no_cache( 1 );
+</%init>
+
+% my $field_value = \%ARGS;
+% my $all_categories = $m->comp( '/db_fetch.m', query => "select distinct category, sub_category from product order by category,sub_category");
+
+<blockquote>
+A list of items matching your search criteria will be displayed.
+You can then Edit items in the list.
+</blockquote>
+<form name=viewfilter action="list.html">
+<P>Search for: <INPUT class=ItemText name=search_query value="<% $field_value->{'search_query'} %>">
+<INPUT id=view type=submit value=Go></P>
+<P>Select Category: <SELECT id=SubCat name=SubCat class="ItemText">
+    <OPTION  value="All Categories" selected>All Categories</OPTION>
+% for my $cat ( @$all_categories ) {
+%   my $catsubcat = $cat->{'category'} . ( $cat->{'sub_category'} ? ":" . $cat->{'sub_category'} : "" );
+    <OPTION <% $catsubcat eq $field_value->{'SubCat'} ? "selected" : "" %> value="<% $catsubcat %>"><% $cat->{'category'} . ( $cat->{'sub_category'} ? ": " . $cat->{'sub_category'} : "" ) %></OPTION>
+% }
+</SELECT>
+<P>Type of search:</P>
+% my $searchtype = $field_value->{'which'};
+<INPUT type=radio value="All Items" <% ( $searchtype eq "All Items" || ! $searchtype ? "checked" : "" ) %> name=which>&nbsp;All Items <span class="QuickTip">(Enabled &amp; Disabled)</span>
+<BR><INPUT type=radio <% $searchtype eq 'Enabled Items' ? "checked" : "" %> value="Enabled Items" name=which>&nbsp;Enabled Items Only
+<BR><INPUT type=radio <% $searchtype eq 'Disabled Items' ? "checked" : "" %> value="Disabled Items" name=which>&nbsp;Disabled Items Only
+<P>Search by:</P>
+% my $searchby = $field_value->{'SearchBy'};
+<INPUT type=radio <% $searchby eq 'Number-Desc' || ! $searchby ? "checked" : "" %> value="Number-Desc" name=SearchBy>&nbsp;Item Number &amp; Description&nbsp;
+<BR><INPUT type=radio <% $searchby eq 'Item Number' ? "checked" : "" %> value="Item Number" name=SearchBy>&nbsp;Item Number&nbsp;
+<BR><INPUT type=radio <% $searchby eq 'Short Description' ? "checked" : "" %> value="Short Description" name=SearchBy>&nbsp;Short Description
+
+</form>
+
+<%method CONTENT_TITLE>
+Advanced Search
+</%method>
+
+

@@ -1,0 +1,135 @@
+<%args>
+$current => undef
+$country => undef
+$validate => undef
+</%args>
+
+<%init>
+my $af = {
+	AA => "Armed Forces - Americas",
+	AE => "Armed Forces - Europe",
+	AP => "Armed Forces - Pacific",
+};
+
+my $can = {
+	AB => "Alberta",
+	BC => "British Columbia",
+	MB => "Manitoba",
+	NB => "New Brunswick",
+	NF => "Newfoundland",
+	NT => "Northwest Territories",
+	NS => "Nova Scotia",
+	ON => "Ontario",
+	PE => "Prince Edward Island",
+	QC => "Quebec",
+	SK => "Saskatchewan",
+	YT => "Yukon",
+};
+
+my $states = {
+	AL => "Alabama",
+	AK => "Alaska",
+	AZ => "Arizona",
+	AR => "Arkansas",
+	CA => "California",
+	CO => "Colorado",
+	CT => "Connecticut",
+	DE => "Delaware",
+	DC => "District of Columbia",
+	FL => "Florida",
+	GA => "Georgia",
+	HI => "Hawaii",
+	ID => "Idaho",
+	IL => "Illinois",
+	IN => "Indiana",
+	IA => "Iowa",
+	KS => "Kansas",
+	KY => "Kentucky",
+	LA => "Louisiana",
+	ME => "Maine",
+	MD => "Maryland",
+	MA => "Massachusetts",
+	MI => "Michigan",
+	MN => "Minnesota",
+	MS => "Mississippi",
+	MO => "Missouri",
+	MT => "Montana",
+	'NE' => "Nebraska",
+	NV => "Nevada",
+	NH => "New Hampshire",
+	NJ => "New Jersey",
+	NM => "New Mexico",
+	NY => "New York",
+	NC => "North Carolina",
+	ND => "North Dakota",
+	OH => "Ohio",
+	OK => "Oklahoma",
+	OR => "Oregon",
+	PA => "Pennsylvania",
+	RI => "Rhode Island",
+	SC => "South Carolina",
+	SD => "South Dakota",
+	TN => "Tennessee",
+	TX => "Texas",
+	UT => "Utah",
+	VT => "Vermont",
+	VA => "Virginia",
+	WA => "Washington",
+	WV => "West Virginia",
+	WI => "Wisconsin",
+	WY => "Wyoming",
+};
+if( $validate ) {
+	if( $country eq 'CA' ) {
+		return 1 if $can->{$current};
+	} elsif( $country eq 'US' ) {
+		return 1 if $states->{$current};
+	} else {
+		return 1;
+	}
+	return undef;
+}
+</%init>
+		<OPTION value="">(Req'd only for US and Canada)
+% if( ( ! $country ) || ( $country && $country ne 'CA' ) ) {
+%	if( ! $country ) {
+		<Option value="">--- Canada ---
+%	}
+% 	foreach( sort { $states->{$a} cmp $states->{$b} } keys %$states ) {
+	<OPTION value="<% $_ %>"<% $current eq $_ ? " SELECTED" : "" %>><% $states->{$_} |h %>
+% 	}
+		<OPTION value="">--
+% 	foreach( sort { $af->{$a} cmp $af->{$b} } keys %$af ) {
+	<OPTION value="<% $_ %>"<% $current eq $_ ? " SELECTED" : "" %>><% $af->{$_} |h %>
+% 	}
+		<OPTION value="">--
+% }
+
+% if( ( ! $country ) || ( $country && $country ne 'US' ) ) {
+%	if( ! $country ) {
+		<Option value="">--- U.S. ---
+%	}
+% 	foreach( sort { $can->{$a} cmp $can->{$b} } keys %$can ) {
+	<OPTION value="<% $_ %>"<% $current eq $_ ? " SELECTED" : "" %>><% $can->{$_} |h %>
+% 	}
+% }
+	</SELECT>
+
+  <%method .license>
+
+  Copyright 1999-2009 Randy Harmon
+
+  Hod is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or   
+  (at your option) any later version.
+
+  Hod is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+  GNU General Public License for more details (in the LICENSE file).           
+
+  You should have received a copy of the GNU General Public License
+  along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+  </%method>

@@ -1,0 +1,119 @@
+% $m->comp('/session.m', no_cookie_required => 1 );
+% unless( $session->{site_admin} ) {
+<h1>Not Found</h1>
+% return 404;
+% }
+<%args>
+$drill => ''
+$limit => 20
+</%args>
+
+<%method title>Referer Reports</%method>
+
+<h1>Referer Reports</h1>
+
+% if( $drill && $drill ne '-' ) {
+<p><a href="referer_log.html">&lt;-- Back to Summary</a></p>
+%	my $froms = $m->comp('/db_fetch.m', 
+%		query => "SELECT * from referers WHERE to_addr=? ORDER by count desc",
+%		args => $drill
+%	);
+%	if( $#$froms > -1 ) {
+<b>Found referrals from:</b> <form style="display:inline" method=GET action="/referer_log.html">
+	<SELECT name=drill onChange="this.form.submit()">
+%		foreach( @$froms ) {
+%	my $pretty = $_->{from_addr}; $pretty = "(bookmark/email)" if $pretty eq '-';
+		<OPTION value="<% $_->{from_addr} |h %>"><% $pretty |h %> (<% $_->{count} %>)
+%		}
+	</SELECT><input type=submit value="Inspect">
+</form>
+%	} else {
+<b>No referrals lead to this page:</b>
+% 	}
+
+<br><br><% $drill |h %><br><br>
+
+
+%	my $tos = $m->comp('/db_fetch.m', 
+%		query => "SELECT * from referers WHERE from_addr=? ORDER BY count desc",
+%		args => $drill
+%	); 
+%	if( $#$tos > -1 ) {
+<b>Found referrals to:</b> <form style="display:inline" method=GET action="/referer_log.html">
+	<SELECT name=drill onChange="this.form.submit()">
+%		foreach( @$tos ) {
+%	my $pretty = $_->{to_addr}; $pretty = "(bookmark/email)" if $pretty eq '-';
+		<OPTION value="<% $_->{to_addr} |h %>"><% $pretty |h %> (<% $_->{count} %>)
+%		}
+	</SELECT><input type=submit value="Inspect">
+</form>
+% 	} else {
+<b>No referrals from this page to other pages.</b><br>
+% 	}
+
+% } else {
+<h2><form style="display:inline" method=get action="referer_log.html">
+<input type=text size=5 name=limit value="<% $limit |h %>"> Most Popular Pages <input type=submit value="Refresh"></form></h2>
+
+% 	my $best = $m->comp('/db_fetch.m',
+%		query => "select to_addr, sum(count) cnt from referers group by to_addr order by cnt desc limit ?",
+%		args => $limit
+% 	);
+% 	foreach my $good( @$best ) {
+%		my $tc;
+%		my $cnt = $m->comp('trace', which => $good->{to_addr}, STORE => \$tc );
+%		my $id = $m->comp("/foldable.m", 
+%			count => $cnt, initial => 1
+%		);
+	<b><% $good->{to_addr} %></b> (<% $good->{cnt} %> hits)&nbsp;&nbsp;<a href="referer_log.html?drill=<% $good->{to_addr} |u %>"><b>Where from?</b></a><br>
+		<& /foldable.m, 
+			id => $id, 
+			content => $tc
+		&>
+% 	}
+% }
+
+<%def trace>
+<%args>
+$which
+</%args>
+% my $tos = $m->comp('/db_fetch.m', 
+%	query => "SELECT * from referers WHERE from_addr=? ORDER BY count desc",
+%	args => $which
+% ); 
+% unless( $#$tos > -1 ) {
+No links to other pages from this URI
+% }
+<table cellspacing=0 width="100%">
+% my $i = 0;
+% foreach( @$tos ) {
+<tr<% ( $i = 1 - $i ) ? ' bgcolor="#cccccc"' : "" %>><td>
+%	my $pretty = $_->{to_addr}; $pretty = "(bookmark/email)" if $pretty eq '-';
+	<% $_->{to_addr} |h %></td>
+
+	<td align=right><b><% $_->{count} %></b></td>
+</tr>
+% }
+</table>
+% return $#$tos + 1;
+</%def>
+
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

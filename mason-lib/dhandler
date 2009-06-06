@@ -1,0 +1,103 @@
+% $r->content_type('text/html');
+% if( $m->dhandler_arg && $m->dhandler_arg !~ m|^index.html$| ) {
+%	my $c = $m->fetch_comp('/not-found.html' );
+%	$r->status(404);
+%	$r->send_http_header();
+%	return $m->comp( $c, uri => $m->dhandler_arg )  if $c;
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<html>
+<head>
+      <title>404: File Not Found: </title>
+
+
+      <meta name="description" content="">
+      <meta name="keywords" content="">
+
+</head>
+<body>
+
+<br>
+
+<h2>File Not Found</h1>
+
+<table bgcolor="#f8fff8" width=500 border=1 cellpadding=5 cellspacing=0
+align="center">
+    <tr><td align="center">
+	
+    <h3><font color=black>Sorry!</font></h3>
+    <p><font color=black>The file you requested was not found:<br><% $m->dhandler_arg %>.</font></p>
+    </td></tr>
+</table>
+   </body>
+</html>
+
+</head>
+%	$r->status( 404 );
+%	return( 404 );
+% }
+% $r->status(200);
+% $r->send_http_header();
+<html>
+<head>
+      <title>Coming Soon</title>
+      <meta name="description" content="">
+      <meta name="keywords" content="">
+
+<STYLE>
+A:link {COLOR: #1671B4; TEXT-DECORATION: underline}
+A:visited {COLOR: #1671B4; TEXT-DECORATION: underline}
+A:active {COLOR: #1671B4; TEXT-DECORATION: underline}
+A:hover {COLOR: #f63817; TEXT-DECORATION: underline}
+
+    TD, TABLE TD, TABLE TR TD, TABLE TH, TABLE TR TH {
+    font-family: Verdana;
+    font-size: 12pt;
+    font-weight: bold;
+    color: #c11b17;
+}
+
+    H3  {
+    font-size : 20pt;
+    font-family : Verdana, Arial, sans-serif;
+    font-weight : normal;
+    font-style : normal;
+    color : #f87a17;
+}
+
+</STYLE>
+
+</head>
+<body bgColor="#000031" topmargin="5">
+
+<br>
+
+<table bgcolor="#f8fff8" width=500 border=1 cellpadding=5 cellspacing=0
+align="center">
+    <tr><td align="center">
+    <h3>Coming Soon!</h3>
+    <b>This domain was recently registered for the web.</b>
+    <br><br>
+
+        <center><% $server_name %></center>
+    </td></tr>
+</table>
+   </body>
+</html>
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

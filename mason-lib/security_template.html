@@ -1,0 +1,81 @@
+<%method .title>Security Policy</%method>
+<%method .doc_synopsis>Template for security statements</%method>
+<%method .doc>
+<h2>Usage</h2>
+
+<p>First, review the statement/policy below.  If, and ONLY if, you agree to 
+conform to this statement/policy, then you may proceed to use this template.</p>
+
+<p>Create a <code>/security_statement.html</code> in your web site, including 
+any site-specific calls for titles, backgrounds, and so on. At the top, use 
+the following call:</p>
+<pre>&lt;&amp; /security_template.html &amp;&gt;</pre>
+
+<p>Use </code>/security_statement.html</code> to link your visitors to your new 
+security statement.</p>
+
+<h2>Statement/Policy:</h2>
+<& /security_template.html &>
+
+</%method>
+<h3>Security Statement</h3>
+
+<p>Many people are concerned about the security of their credit card number and 
+<a href="privacy_policy.html">private information</a> when placing orders over 
+the Internet.  To address this concern, our site 
+employs &quot;Secure Sockets Layer&quot;(SSL) security protocol which
+provides data encryption, message integrity and server authentication.
+</p>
+
+<p>Data Encryption makes it virtually impossible for unauthorized people to view information traveling
+between computers.  Information sent between computers is cryptographically encoded by the
+sender and then decoded by the receiver.  If the encoded message is not received intact 
+it can not be decoded thereby ensuring the that the data passing between you and our servers 
+has not been modified in any way.
+</p>
+
+<p>Server Authentication confirms a server's identity by ensuring that the 
+server's certificate and public ID are valid and have been issued by a recognized Certificate 
+Authority (CA). Confirming a server's identity before sending a credit card number over the
+Internet is important to ensure you aren't sending your credit card information to someone other
+than the intended party.
+</p>
+
+<p>To benefit from the features of SSL you must use a browser such as 
+Microsoft Internet Explorer, Netscape, Opera and AOL browsers 
+to ensure your information is submitted with a high level of 
+security. To verify SSL security is in effect look for the secure symbol typically 
+represented a "key" or "lock" located in the bottom or top corners of the browser.
+</p>
+
+<table align="center" border="0"><tr><td>
+Be certain you see a symbol like one of these in your browser
+<br>
+window before sending private information over the internet.
+</td></tr><tr><td align="center">
+<img src="/i/ssl-ns4.gif" width="16" height="14" alt="Secure Symbol" border="0">
+<img src="/i/ssl-ns6.gif" width="12" height="11" alt="Secure Symbol" border="0">
+<img src="/i/ssl-opera.gif" width="20" height="16" alt="Secure Symbol" border="0">
+<img src="/i/ssl-ie_aol.gif" width="12" height="14" alt="Secure Symbol" border="0">
+</td></tr>
+</table>
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>
+

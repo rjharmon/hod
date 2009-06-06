@@ -1,0 +1,112 @@
+<%method .title>
+Privacy Policy
+</%method>
+<%method .doc_synopsis>
+Template for privacy policies
+</%method>
+<%method .doc>
+<h2>Usage</h2>
+
+<p>First, review the statement/policy below.  If, and ONLY if, you agree to 
+conform to this statement/policy, then you may proceed to use this template.</p>
+
+<p>Create a <code>/privacy_statement.html</code> in your web site, including 
+any site-specific calls for titles, backgrounds, and so on. At the top, use 
+the following call:</p>
+<pre><% <<EOD
+<\& /privacy_template.html &\>
+<\& /email_display.m, 
+	email => 'webmaster\@yourcompany.com',
+	subject => "Privacy Policy",
+	name => "Webmaster at Your Company Name", #optional
+	label => 'webmaster\@yourcompany.com' #optional
+\&>
+EOD
+ |h %>
+</pre>
+
+<p>The template, as shown below, does <b><i>not</i></b> include an email 
+address for contact, so you must include an email address.  For more 
+information about email obfuscation, see
+<a href="/doc.html?module=/email_display.m">the documentation for 
+<code>/email_display.m</code></a>.</p>
+
+<p>Use </code>/privacy_policy.html</code> to link your visitors to your new 
+security statement.</p>
+
+<h2>Statement/Policy:</h2>
+<& /privacy_template.html &>
+
+</%method>
+<h3>Privacy Policy</h3>
+
+<p>As a user of the internet and a citizen of the technology age, your
+privacy is one of the concerns we must always take into account.  In order
+to ensure your privacy, we take a number of <a href="#technical">technical
+steps</a> to prevent the acquisition of your personal information by third
+parties and we have a strict policy of <a href="#use">how we use</a> the
+information you provide.</p>
+
+<a name="technical"></a><h3>Technical Measures to protect your privacy</h3>
+
+<p>To ensure that your information is not collected by third parties, we
+employ technical measures to hide details about your interests, your
+finances and your account information.  </p>
+
+<p>Once you enter the ordering process, we use a <a href="security_statement.html">secure
+web</a> connection to prevent other people from seeing the products you take an interest
+in.  When you transmit your information over that connection, it's encrypted to protect
+you from prying eyes.</p>
+
+<p>We use a browser cookie that's stored by your web browser, to distinguish
+your browsing session from those of other visitors.  The cookie contains NO 
+personal information; it is simply a unique identifier.  The cookies use 
+cryptographic techniques to thwart potential attackers from guessing your
+cookie value.
+</p>
+
+<p>One of the other technical ways we protect your privacy is that we NEVER
+hold your credit card number in cleartext on our server.  For your
+protection, any credit card information we store will be encrypted using
+public keys held at remote locations.  From a technical perspective, 
+your privacy is our top concern.</p>
+
+<a name="use"></a><h3>How we use your information</h3>
+
+<P>Our primary use for your information is to fulfill your order.  We may
+also use a logged record of your clickpath to help identify problems with
+our web sites, areas for improvement, and to gauge popularity of different
+product lines.</p>
+
+<p>Other uses of your information may include contacting you by email to
+tell you about new products which you may have interest in, based on your
+other purchases with us.  If you wish to stop receiving such contacts, 
+that is your right and we will promptly comply.
+</p>
+
+<h3>Conclusion</h3> <p>In this internet age, personal privacy and security
+is a critical part of both your responsibility and ours.  If we may do
+anything to improve your feeling of privacy at our web site, or if you 
+have questions about any privacy issue, please feel free to contact us at
+
+<%method .session_no_cookie_required></%method>
+
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

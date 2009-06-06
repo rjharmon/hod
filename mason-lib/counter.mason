@@ -1,0 +1,96 @@
+<%args>
+$ignore => []
+$count => 'count'
+$mode => 'count' 
+$silent => 0
+$DEBUG => 0
+</%args>
+<%once>
+use IO::File;
+use File::Find;
+</%once>
+<%init>
+$count =~ s|[^-A-Za-z_\./]||g;
+$count =~ s|\.\.|.|g;
+</%init>
+% my $root = $m->interp->data_dir();
+<%perl>
+if( $mode eq 'count' ) {
+	my %ignore = map { $_ => 1 } @$ignore;
+
+	my $cf = "$root/counter/$count";
+
+	warn "opening counter file $count" if $DEBUG;
+	if( -f $cf ) {
+		my $try = 0;
+		while( ! open COUNTER, "< $cf" ) { 
+			sleep 1 if $try < 3;
+			last if $try++ > 10;
+		}
+		if( $try > 10 ) {
+			warn "can't open '$cf': $!"; 
+			return;
+		}
+	} else {
+		#no need to do anything; the file will be created in a moment.
+	}
+	my $i = <COUNTER> || 1;
+	close COUNTER;
+
+	my $wild = [ split /\./, $m->apache_req->connection->remote_ip() ];
+	pop @$wild; push @$wild, '*';
+	$wild = join ".", @$wild;
+	warn "wild: $wild; count: $count" if $DEBUG > 1;
+	
+	unless( $ignore{ $m->apache_req->connection->remote_ip() } || $ignore{ $wild } ) {
+		my $try = 0;
+		while( ! open COUNTER, ">$cf" ) {
+			sleep 1 if $try < 3;
+			last if $try++ > 10;
+		}
+		if( $try > 10 ) {
+			warn "can't open '$cf' for writing: $!";
+		} else {
+			$i++ ;
+			print COUNTER $i;
+			close COUNTER;
+			warn `date` . " counter: $i";
+		}
+	}
+</%perl>
+% unless( $silent ) {
+<% $i %>
+% }
+% } elsif( $mode eq 'report' ) {
+%	my $report_line = $m->callers(1)->subcomps('report_line');
+% 	find sub { 
+%		return if /^\.$/;
+% 		if( open COUNTER, "$root/counter/$_" ) {
+%			my $t = <COUNTER>;
+%			close COUNTER;
+	<& $report_line, counter => $_, count => $t &>
+% 		} else {
+		<FONT COLOR=RED>Failed to open <% "$root/counter/$_" %>
+% 		}
+% 	}, "$root//counter";
+% } else {
+	<font color=red>counter.mason: mode can be 'count' or 'report' only.</font>
+% }
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

@@ -1,0 +1,12 @@
+<h3>Promotions</h3>
+% unless ( $m->fetch_comp('/store/catalog/offers/custom_offer.m' ) ) {
+<font color=red>Note: Promotions have not been configured for this web
+store.</font> Please email <& /email_display.m, 
+	email => 'support',
+	subject => "Please configure promotions for $server_name",
+	body => "\nI would like to offer promotional discounts to my customers.  ".
+		"Please contact me about enabling this feature on my web store.\n\n".
+		"I've described a few promotional ideas below to clarify my wishes:\n\n"
+ &> to have your promotions configured.
+% }
+% $m->call_next();

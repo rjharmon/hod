@@ -1,0 +1,42 @@
+<%flags>
+inherit => '/store/manager_autohandler'
+</%flags>
+<%method authenticate>
+% return 1 if $m->comp('/session/is_admin.m', area => 'Store Catalog Manager', 
+%	role => [ 'site_admin', 'store_admin', 'catalog_view_list' ],
+%	%ARGS
+% );
+% return 0;
+</%method>
+% $m->call_next();
+<%method HEADER_MENU><& PARENT:HEADER_MENU, %ARGS &>
+% if( $m->comp('/session/is_admin.m', area => 'Store Catalog Manager', 
+%	role => [ 'site_admin', 'store_admin', 'catalog_view_list' ],
+%	silent => 1
+% ) ) {
+<b>Catalog: </b>
+	<a href="/store/catalog/list.html">List</a> | 
+	<a href="/store/catalog/search.html">Search</a> | 
+	<a href="/store/catalog/edit.html?action=add"><b>Add Items</b></a> | 
+	<a href="/store/catalog/offers/">Promotions</a> |
+% }
+</%method>
+<%method HEADER_VMENU>
+% if( $m->comp('/session/is_admin.m', area => 'Store Catalog Manager', 
+%	role => [ 'site_admin', 'store_admin', 'catalog_view_list', 'catalog_add_items' ],
+%	silent => 1
+% ) ) {
+<b>Catalog: </b>
+<div style="margin-left:6px; font-size:10px">
+	<a class=submenu href="/store/catalog/list.html">List</a><br>
+	<a class=submenu href="/store/catalog/search.html">Search</a><br>
+% if( $m->comp('/session/is_admin.m', area => 'Store Catalog Manager', 
+%	role => [ 'site_admin', 'store_admin', 'catalog_add_items' ],
+%	silent => 1
+% ) ) {
+	<a class=submenu href="/store/catalog/edit.html?action=add"><b>Add Items</b></a><br>
+% }
+	<a class=submenu href="/store/catalog/offers/">Promotions</a><br>
+</div>
+% }
+</%method>

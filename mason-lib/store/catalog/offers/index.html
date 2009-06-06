@@ -1,0 +1,66 @@
+<%once>
+my $display;
+my $no_pager;
+my( $category, $sub_category, $search_type, $search_query );
+use Date::Manip;
+
+my $pager_options = {
+	table => 'offer',
+	definition => '/store/catalog/offers/definition.m',
+	order => 'start_date',
+	self_url => 'index.html'
+};
+</%once>
+
+<& .index &>
+<TABLE cellSpacing=1 cellPadding=5 border=1 cols="5" class="ItemText">
+	<TR class="ItemTitle">
+		<TH align=center>Offer Name</TH>
+		<TH align=center>SKU</TH>
+		<TH align=center>Summary</TH>
+		<TH align=center>Discount</TH>
+		<TH align=center>Start Date</TH>
+		<TH align=center>End Date</TH>
+	</TR>
+
+<& /db_pager.m, 
+	%$pager_options,
+	mode => 'list',
+	args => \%ARGS
+&>
+<%def .pager_item>
+<%args>
+$item
+</%args>
+<!-- ITEM BEGIN -->
+	<tr>
+		<TD align=center class="SmallText"><a href="edit.html?name=<display name=name>"><display name=name></a></TD>
+		<TD align=center class="SmallText"><% $item->{product} %></td>
+		<TD align=left class="SmallText"><display name=summary></TD>
+		<TD align=center class="SmallText"><display name=discount></TD>
+		<TD align=center class="SmallText"><display name=start_date></TD>
+		<TD align=right class="SmallText"><display name=end_date></TD>
+	</TR>
+<!--ITEM END -->
+</%def>
+
+<tr><td colspan=6><a href="edit.html?action=add">Add a Promotional Offer</a></td></tr>
+</TABLE>
+
+<& .index &>
+
+<%def .index>
+<div align=center>
+<& /db_pager.m,
+	%$pager_options,
+	mode => 'index',
+	normal => 'QuickTip',
+	selected => 'QuickTipBold',
+	disabled => 'QuickTip',
+	args => \%ARGS
+&>
+</div>
+</%def>
+<%def .not_found>
+<tr><td colspan=6>No records found</td></tr>
+</%def>

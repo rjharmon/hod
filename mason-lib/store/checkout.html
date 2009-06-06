@@ -1,0 +1,437 @@
+<%once>
+use Apache::Constants qw(:response);
+</%once>
+<%method title>
+Checkout - Address Information
+</%method>
+<%args>
+$which => 'bill'
+$next_url => $m->comp("SELF:next_page")
+$allow_empty_cart => 0
+$DEBUG => 0
+</%args>
+<%method next_page>
+% return "${server_name}/store/credit_card.html";
+</%method>
+<%init>
+return unless $m->comp('/secure.redirect.html');
+warn Data::Dumper::Dumper( \%ARGS ) if $DEBUG;
+$r->no_cache(1);
+$m->comp('/session.m', DEBUG => 0 );
+my $cart_items = $session->{store}{cart}{items};
+unless( ( ref( $cart_items ) eq 'ARRAY' && $#$cart_items > -1 ) || $allow_empty_cart ) {
+	return $m->comp('/redir.m', uri => '/store/shop/index.html' );
+}
+my $countries = $m->comp( '/store/countries.m' );
+
+my $colors = $m->comp('/theme.m:current_colors');
+my $styles = $m->comp('/theme.m:current_styles');
+
+my $focus;
+$session->{store}{user_address} ||= {};
+my $next = 1;
+if( $ARGS{form_submit} ) {
+	$next = 0 unless $ARGS{address_submit};
+	my $exp = sub { my $w = shift; return [ map { "${w}_$_" } @_ ] };
+	my @required = qw(
+		first last address1 city phone country
+	);
+	my @req_bill = qw(email);
+
+	# warn( $countries->{ $ARGS{"${which}_country"} }. " requires a postal code" ),
+	push @required, 'zip' if $countries->{ $ARGS{"${which}_country"} } =~ /\*/;
+	push @required, 'state' if $ARGS{"${which}_country"} =~ /^CA|US$/;
+
+	push @required, @req_bill if $which eq 'bill';
+	my @all = ( @required, 'company', 'address2' );
+
+	push @all, @req_bill unless $which eq 'bill';
+	push @all, 'po_num' if $which eq 'bill';
+	push @all, 'zip';# unless $countries->{ $ARGS{"${which}_country"} } =~ /\*/;
+	push @all, 'state' unless $ARGS{"${which}_country"} =~ /^CA|US$/;
+
+
+	my @all_exp = @{ $exp->( $which, @all ) };
+	push @all_exp, 'shipping' if $which eq 'billing';
+
+	$ARGS{"${which}_state"} = ' ' unless( 
+		!$ARGS{"${which}_country"} || 
+		 $ARGS{"${which}_country"} eq 'US' || 
+		 $ARGS{"${which}_country"} eq 'CA'
+	);
+
+	$m->comp('/session.m',
+		fetch => [ @all_exp ],
+		location => $session->{store}{user_address},
+		args => \%ARGS,
+		DEBUG => 3
+	);
+	$m->comp('/session.m',
+		save => [ @all_exp ],
+		location => $session->{store}{user_address},
+		args => \%ARGS
+	);
+	my $empty = []; #which required fields were left empty?
+	my $name = sub {
+		my $field = shift;
+		$field =~ s/^bill_//;
+		$field =~ s/^ship_//;
+		$field = {
+			'zip' => "Postal Code",
+			'address1' => 'Address (Line 1)',
+			'city' => 'City',
+			'phone' => 'Phone',
+			'email' => 'E-Mail',
+			'first' => "First Name",
+			'last' => "Last Name",
+			'state' => "State/Province",
+		}->{$field};
+		$field = ucfirst $field;
+		return $field;
+	};
+	unless( $m->comp( '/session.m',
+		save => $exp->( $which, @required ),
+		location => $session->{store}{user_address},
+		args => \%ARGS,
+		empty_fields => $empty
+	) ) {
+		if( ! $ARGS{address_submit} ) {
+			$next = 0;
+		} else {
+			my $these_fields = $#$empty > 0 ? "These fields" : "This field";
+			$m->out( "<p><b style=\"color:red\">$these_fields cannot be empty: ". join( ", ", map { $name->($_) } @$empty ). "</b></p>" );
+			$focus = shift @$empty;
+			$next = 0;
+		}
+	}
+	if( $ARGS{address_submit} && $ARGS{"${which}_country"} =~/^CA|US$/ && $ARGS{"${which}_state"} ) {
+		unless( $m->comp("state_prov.html", 
+			current => $ARGS{"${which}_state"},
+			country => $ARGS{"${which}_country"},
+			validate => 1
+		) ) {
+			$m->out("<p><b style=\"color:red\">Invalid state or province for ". $countries->{ $ARGS{"${which}_country"} }. "</b></p>" );
+			$focus ||= "${which}_state}";
+			$next = 0;
+		} else { # validate postal code format
+			if( $ARGS{"${which}_country"} eq 'CA' ) {
+				$ARGS{"${which}_zip"} =~ s/\s+//g;
+				$ARGS{"${which}_zip"} =~ /^[A-CEGHJ-NPR-TVXY]\d[A-CEGHJ-NPR-TV-Z] ?\d[A-CEGHJ-NPR-TV-Z]\d$/
+					or
+				( 
+					$m->out("<p><b style=\"color:red\">Invalid Canadian postal code</b></p>" ),
+					$focus = "${which}_zip",
+					$next = 0
+				);
+			} else {
+				$ARGS{"${which}_zip"} =~ s/\s+//g;
+				$ARGS{"${which}_zip"} =~ /^\d{5}(-\d{4})?$/
+					or
+				( 
+					$m->out("<p><b style=\"color:red\">Invalid U.S. Zip code</b></p>" ),
+					$focus = "${which}_zip" ,
+					$next = 0
+				);
+			}
+		}
+	}
+	if( $next ) {
+		if( $which eq 'bill' && $ARGS{shipping} eq 'billing' ) {
+			foreach( @all ) {
+				$ARGS{"ship_$_"} = $ARGS{"bill_$_"};
+			}
+			$m->comp('/session.m',
+				fetch => $exp->( "ship", @all ),
+				location => $session->{store}{user_address},
+				args => \%ARGS
+			);
+			$m->comp('/session.m',
+				save => $exp->( "ship", @all ),
+				location => $session->{store}{user_address},
+				args => \%ARGS
+			);
+			my $empty = []; #which required fields were left empty?
+			unless( $m->comp( '/session.m',
+				save => $exp->( "ship", @required ),
+				location => $session->{store}{user_address},
+				args => \%ARGS,
+				empty_fields => $empty
+			) ) {
+				if( ! $ARGS{address_submit} ) {
+					$next = 0;
+				} else {
+					my $these_fields = $#$empty > 0 ? "These fields" : "This field";
+					$m->out( "<p><b style=\"color:red\">$these_fields cannot be empty: ". join( ", ", map { $name->($_) } @$empty ). "</b></p>" );
+					$next = 0;
+				}
+			}
+			if( $next ) {
+				$r->header_out('Location' => $next_url );
+				$r->status( MOVED );
+				$m->comp('/session.m', save => 1 );
+				return;
+			}
+		} elsif( $which eq 'ship' ) {
+			$r->header_out('Location' => $next_url );
+			$r->status( MOVED );
+			$m->comp('/session.m', save => 1 );
+			return;
+		} else {
+			$which = $ARGS{which} = 'ship';
+		}
+	}
+	$m->comp('/session.m', save => 1 );
+}
+</%init>
+<script language=JavaScript>
+<!--
+var which='bill';
+% if( $which eq 'ship' ) {
+which = 'ship';
+% }
+//-->
+</script>
+
+<form method="post" name="address_form" onSubmit="return validate_form()" action="/store/checkout.html">
+%# accept-charset="UTF-8, ISO-8859-1" 
+<input type=hidden name=which value=<% $which %>>
+<input type=hidden name=allow_empty_cart value="<% $allow_empty_cart |h %>">
+<input type=hidden name=next_url value="<% $next_url |h %>">
+<TABLE cellSpacing=0 cellPadding=1 width=475 border=0 align="center" class="checkout">
+<TBODY>
+<TR bgColor="<% $colors->{header} %>">
+<TD width="100%" colSpan=2><h2 style="margin:2px">
+% if( $which eq 'ship' ) {
+Shipping \
+% } else {
+Billing \
+% }
+Information</h1> </TD></TR>
+% if( $which eq 'bill' ) {
+<tr><td colspan=2 style="font-size:85%" align=center>Use the billing address from your credit card</td></tr>
+% }
+% my $fv = $session->{store}{user_address};
+% warn Data::Dumper::Dumper( $fv ) if $DEBUG;
+<TR>
+<TD><label for="FirstName">First Name:</TD>
+<TD><INPUT value="<% $fv->{"${which}_first"} %>" maxLength="15" size="15" name="<% $which %>_first" id="FirstName" tabIndex="1"></label></TD></TR>
+<TR>
+<TD><label for="LastName">Last Name:</TD>
+<TD><INPUT value="<% $fv->{"${which}_last"} %>" maxLength="15" size="15" name="<% $which %>_last" id="LastName" tabIndex="2"></label></TD></TR>
+<TR>
+<TD><label for="Email">E-Mail:</TD>
+<TD><INPUT value="<% $fv->{"${which}_email"} %>" size="35" name="<% $which %>_email" id="Email" tabIndex="3"></label>\
+% if( $which eq 'ship' ) {
+&nbsp;(optional)\
+% }
+</TD></TR>
+<TR>
+<TD><label for="Company">Company:</TD>
+<TD><INPUT value="<% $fv->{"${which}_company"} %>" maxLength="50" size="25" name="<% $which %>_company" id="Company" tabIndex="4"></label>&nbsp;(optional)</TD></TR>
+<TR valign=baseline>
+<TD><label for="Address">Address:</TD>
+<TD><INPUT value="<% $fv->{"${which}_address1"} %>" maxLength="30" size="40" name="<% $which %>_address1" id="Address" tabIndex="5"></label></TD></TR>
+<TR valign=baseline>
+<TD>
+<div style="margin-left:15px;font-size:85%">
+UPS does not ship to P.O. Boxes!<br><br></div>
+</TD>
+<TD><INPUT value="<% $fv->{"${which}_address2"} %>" maxLength="30" size="40" name="<% $which %>_address2" tabIndex="6">&nbsp;(optional)</TD></TR>
+<TR>
+<TD><label for="City">City/Town:</TD>
+<TD><INPUT value="<% $fv->{"${which}_city"} %>" maxLength="30" size="30" name="<% $which %>_city" id="City" tabIndex="7"></label></TD></TR>
+<TR>
+	<TD valign=top><label for="State">State/Province:</label>
+	</TD><TD>
+%# <INPUT value="<% $fv->{"${which}_state"} %>" maxLength="2" size="4" name="<% $which %>_state" id="State" tabIndex="8">
+		<SELECT value="<% $fv->{"${which}_state"} %>" name="<% $which %>_state" id="State" tabIndex=8>
+<& state_prov.html, 
+	current => $fv->{"${which}_state"},
+	country => $fv->{"${which}_country"}
+&><input type=submit value="Refresh" name="refresh" style="font-size:smaller"><Br>
+<div style="margin-left:15px;font-size:85%">Note: UPS <b>only</b> uses state/province names
+<br>for US and Canadian addresses</span>
+</td></tr>
+<tr>
+	<td>Country:</TD>
+	<td>
+		<SELECT NAME="<% "${which}_country" %>" id="Country" tabIndex="9">
+%		$fv->{"${which}_country"} ||= 'US';
+%		map {
+			<OPTION value="<% $_ %>"<% $fv->{"${which}_country"} eq $_ ? " SELECTED" : "" %>><% $countries->{$_} %>
+%		} sort { $countries->{$a} cmp $countries->{$b} } keys %$countries;
+		</SELECT>*<br>
+	</td>
+</tr>
+<tr><td>
+
+		<label for="Zip">Zip/Postal Code:</label>
+	</td><td>
+		<INPUT value="<% $fv->{"${which}_zip"} %>" maxLength="10" size="8" name="<% $which %>_zip" id="zip" tabIndex="10">* <span style="font-size:85%">Required only for indicated countries</span>
+</TD></TR>
+<TR>
+<TD><label for="Phone">Phone Number:</label></TD>
+<TD><INPUT value="<% $fv->{"${which}_phone"} %>" maxLength="21" size="25" name="<% $which %>_phone" id="Phone" tabIndex="11"> </TD></TR>
+<TR>
+</TR>
+% if( $which eq 'bill' ) {
+<TR>
+<TD><label for="PONum">Purchase Order #:</label></TD>
+<TD><INPUT value="<% $fv->{"${which}_po_num"} %>" maxLength="24" size="25" name="<% $which %>_po_num" id="PONum" tabIndex="12"> (optional)</TD></TR>
+<TD>&nbsp;</TD>
+% 	unless( $m->comp('/store/options.m', option => 'no_shipping' ) ) {
+<TR bgColor="<% $colors->{footer} %>">
+	<TD width="100%"><h3 style="margin:0">Shipping Information</h3>
+
+% my $bill_ship_same = ( $ARGS{shipping} eq 'billing' ? 1 : ( $ARGS{shipping} ? 0 : 1 ) );
+
+	<TD><label for="ShipToBill"><INPUT type="radio" <% $bill_ship_same ? "CHECKED " : "" %> value="billing" name="shipping" id="ShipToBill" tabIndex="13">
+	<SPAN class=CartSmallTextWhite>Deliver to my Billing Address</span></label>
+
+	<BR><label for="ShipToAddress"><INPUT type="radio" value="other" <% $bill_ship_same ? "" : "CHECKED " %>name="shipping" id="ShipToAddress" tabIndex="14">
+	<SPAN class=CartSmallTextWhite>Deliver to a Different Address</span></label></td></tr> 
+
+	<TR><TD>&nbsp;</TD></TR>
+</tr>
+%	} else {
+	<input type=hidden name=shipping value=billing>
+%	}
+% }
+
+	<TR><TD align="center" colSpan="2">
+<INPUT type="hidden" value="true" name="form_submit">
+<INPUT type="button" value="Clear Form" tabIndex="15" onclick="if(window.confirm()) {clearForm(this.form); document.address_form.<% $which %>_first.focus()}"> 
+<INPUT type="submit" value="Proceed" name="address_submit" tabIndex="16"> 
+</TD></TR>
+<tr><td class="SmallCaption" colspan="2">
+We consider your information to be confidential.  We take your privacy and internet security
+seriously.  To learn more about our policies and security measures, please view our
+<a href="/privacy_policy.html">Privacy Policy</a> and our
+<a href="/security_statement.html">Security Statement</a>.
+</td></tr>
+</TBODY></TABLE>
+</form>
+
+<SCRIPT type="text/javascript" language="JavaScript">
+% $focus ||= "${which}_first";
+eval("document.address_form.<% $focus %>.focus()");
+</SCRIPT>
+
+<%attr>
+PAGE_TITLE=> 'Checkout'
+PAGE_IMG_TITLE=> 'online_shopping.gif'
+</%attr>
+
+<SCRIPT type="text/JavaScript" language="JavaScript" src="/store/form.js"></SCRIPT>
+<SCRIPT type="text/JavaScript" language="JavaScript">
+
+IE = document.all;
+%# NextButtonDown = new Image();
+%# NextButtonDown.src = "/images/button_processing.gif";
+
+function validate_form() {
+if( which == 'bill' ) {
+	if (!checkMe()) return false;
+}
+var elm, i;
+form = document.forms[0];
+	for (i = 0; i < form.elements.length; i++) {
+	elm = form.elements[i];
+		if (elm.type == "hidden") continue;
+		if (typeof(elm.xvalidate) == "function" && !elm.xvalidate()) return false;
+	}
+%#	if (IE) {
+%#	document.all.btnNext.className = "NextButtonDown";
+%#	document.forms[0].btnNext.disabled = true;
+%#	} else {
+%#	document.btnNext.src = "/images/button_processing.gif";
+%#	redo = true;
+%#	}
+	return true;
+}
+</SCRIPT>
+
+	<script type="text/javascript" language="JavaScript">
+
+function checkMe ()
+{
+   if ( checkEmail(eval("document.address_form."+ which +"_email"), eval("document.address_form."+ which + "_email.value" ) ) == false)
+   {
+     return false;
+   }
+  return true;
+}
+
+function checkEmail(theField, theAddress)
+{
+    // Any character in "specials" can be quoted to make it legal,
+	// but I don't know of anyone in the "real" world that does this.
+	// For example, "(Blow, Joe)"@example.com is technically 
+	// legal but you'd have to be running some strange e-mail package 
+	// to support it.
+    // 
+	
+	var specials = "()<>@,;\\\\:\"\\[\\]\\s";
+
+	var completeRE =  "^"     // Start at the beginning
+		+ "(([^" + specials + "]+)"  // (Not specials)+
+		+ "|(\\\"[^\"]+\\\"))"       // Or a quoted string
+		+ "\\@"                      // An At sign "@"
+		+ "("                        // group the recurring address
+		+   "[^" + specials + ".]+"  // (Not specials or .)+
+		+   "\\."                    // A period "."
+		+ ")+"                       // at least one address
+		+ "[^" + specials + ".]+"    // (Not specials or .)+
+		+ " *"                       // optional white space
+		+ "$";                       // Must end the string
+
+	var newstr = trim(theAddress);
+
+    // Create a regular expression object from completeRE
+    var validEmailRE = new RegExp(completeRE);
+
+    // If the e-mail address doesn't match the regular expression put up an alert.
+    if (!validEmailRE.test(newstr))
+      {
+        // DISPLAY ERROR MESSAGE
+        alert("Please provide your email in standard Internet format such as name@domain.com");
+        theField.focus();
+        return (false);
+      }
+
+    return(true);
+}
+
+function trim(strText) {
+    // this will get rid of leading spaces
+    while (strText.substring(0,1) == ' ')
+        strText = strText.substring(1, strText.length);
+
+    // this will get rid of trailing spaces
+    while (strText.substring(strText.length-1,strText.length) == ' ')
+        strText = strText.substring(0, strText.length-1);
+
+   return strText;
+}
+
+</script>
+
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

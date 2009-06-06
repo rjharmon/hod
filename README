@@ -1,0 +1,106 @@
+Hod - Masonry tools for Mason web sites
+
+This repository contains a variety of Mason components developed primarily
+by Randy Harmon <r_j_h_box-sf@yahoo.com>.
+
+Mason is a perl-based templating system.  http://www.masonhq.com.  Hod
+provides components that use Mason to provide many useful tools for building
+websites.  
+
+
+Feature Highlights
+
+* Mailer (aka "Contact Us" form)
+
+* Database Record create/read/update/delete, with easily customizable data
+  entry forms
+
+* Database Record lists, including paging and customizable display
+  formatting
+
+* User authentication and logins, with permission settings for all features
+  provided by Hod (and maybe a couple extra ones :)
+
+* User-session capturing, including HTTP referer capture and reporting
+
+* Ensuring https:// connections
+
+* Online store
+
+* Pluggable shipping options for online store including flat-rate, tiered
+  based on order amount, and live UPS Shipping options + costing based on
+  destination address.  Note, the UPS module's protocol version might or 
+  might not remain supported by UPS's online service (untested lately).
+
+* Pluggable payment processing for online store, including AuthorizeNet and
+  Echo.  Note, these payment modules may use protocol versions no longer
+  supported by these vendors (untested lately).
+
+
+Configuration
+
+To use Hod tools, configure Apache/Mason to process .html files through Mason. 
+Do not allow .m files to be processed by Apache/Mason - more specifically,
+deny webserver access to these files completely.
+
+Next, configure the Hod directory as the first component root, and configure 
+your website as the second component root.  Make calls to these components as 
+if they were part of your web root.  For .html files, you can link directly to
+them.  For .m files, these need to be called from .html mason components -
+either ones that you write or ones provided by Hod.
+
+Finally, ensure that the Hod lib/ directory is part of Perl's library path,
+using 'use lib'.  You might also want to preload some or all of the
+libraries found there.
+
+
+Security and Other notes
+
+* Update the vcode generation according to notes in the source file under
+  session/.  This is important for site security.
+
+* Your server should be able to accept mail and forward it to addresses at
+  your domain.  
+
+* There are some source files that have email addresses hardcoded, possibly
+  to addresses that don't really work.  You might wish to review them and 
+  identify these cases, updating them as you need.
+
+More Reading
+
+For further documentation, please do one or more of the following:
+
+* Set up your website according to the instructions above, then visit
+  /docs.html.  This component scans the entire component tree and exposes
+  the documentation written for each component.
+
+* Browse the document tree directly, and view the documentation defined for
+  most of the components.  
+
+* See the store/ directory, which provides components for a complete web-based
+  store.  This would be the learn-by-example method.
+
+* The Order reports' graphs require some truetype fonts in /fonts.
+
+
+
+Legal
+
+I am making Hod available under GPL3.  If you wish to use the code in way
+not consistent with that license, please contact me directly to discuss
+alternative terms.
+
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details (in the LICENSE file).
+
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+

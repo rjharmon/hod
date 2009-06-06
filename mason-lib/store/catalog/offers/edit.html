@@ -1,0 +1,97 @@
+<%method .doc_synopsis>
+Record editing page for in-store promotions
+</%method>
+<%init>
+$m->comp( '/record.m', %ARGS, DEBUG => 0 );
+</%init>
+
+<%def .error_message>
+<%args>
+$message
+</%args>
+<span class=FormError><% $message %><br>
+</%def>
+
+<%def .form>
+<%args>
+$item
+$action
+</%args>
+
+<form method=post action="edit.html">
+<table border=0  CELLSPACING="7" CELLPADDING="0" COLS="8">
+%	$ARGS{referer} ||= $r->header_in('Referer');
+	<input type=hidden name=referer value="<% $ARGS{referer} %>">
+
+<tr><td align=right>Code:</td><td>
+% if( $action eq 'add' ) {
+<field name=name size=10><help name=name> Product: <field name=product><help name=product></td></tr>
+% } else {
+<input type=hidden name=name value="<% $item->{name} |h %>"><b><% $item->{name} |h %></b>
+% }
+
+<tr><td align=right>Discount: $</td><td><field name=discount size=6><help name=discount></td></tr>
+
+<tr><td align=right>Summary:</td><td><field name=summary size=50><help name=summary></td></tr>
+
+<tr valign=top><td align=right>Description:</td><td><field name=details cols=50 rows=5><help name=details></td></tr>
+
+<tr><td align=right>Start Date</td><td><field name=start_date><help name=start_date></td></tr>
+
+<tr><td align=right>End Date</td><td><field name=end_date><help name=end_date></td></tr>
+
+<tr><td colspan=2>
+      <INPUT type="hidden" value="<% $action %>" name="action">
+      <INPUT type="submit" value="Save Item" name="done">
+</td></tr>
+</table>
+</form>
+</%def>
+
+<%method CONTENT_TITLE>
+<% ucfirst $ARGS{action} %> Item
+</%method>
+
+
+<%def .validate>
+<%args>
+$item
+$def
+$opts
+</%args>
+<%init>
+my( $redo, $err );
+my( $x, $y );
+my $size;
+foreach $size( qw(small large) ) {
+	my $pic = $item->{"${size}_pic"} || next;
+	my $repo = $opts->{"${size}_pic"}{repository};
+	# warn "checking $size image size: $repo/$pic";
+	( $x, $y ) = Image::Size::imgsize( "$repo/$pic" );
+	unless( $x && $y ) {
+		$m->comp(".error_message", message => "Not a valid image file ($size): $pic" );
+		unlink $pic;
+		$err = 1;
+	} else {
+		my $s = $x . "x" . $y;
+		if( $s ne $item->{"${size}_pic_size"} ) {
+			$item->{"${size}_pic_size"} = $s;
+			$redo = 1;
+		}
+	}
+}
+return undef if $err;
+return "0E0" if $redo;
+return 1;
+</%init>
+</%def>
+
+<%def .help>
+% return $m->comp( '/help.m', %ARGS );
+</%def>
+
+<%def .record_def>
+<%init>
+return $m->comp( 'definition.m' );
+</%init>
+</%def>

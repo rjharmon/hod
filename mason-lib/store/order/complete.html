@@ -1,0 +1,668 @@
+<%args>
+$order_number
+$cc_number
+$cc_security
+</%args>
+
+<%once>
+use MIME::Lite;
+
+my $order;
+my $DEBUG = 0;
+
+my $opt;
+
+my $EMPTY_CART_ON_SUCCESS = 1;
+
+my $user;
+my $cc_response;
+
+my $too_long;
+
+my $page_title = "Thank You For Your Order" ;
+
+my $invoice; 
+my $invoice_attachment;
+</%once>
+<%shared>
+my $default_vendor;
+my $vendor_warning;
+</%shared>
+<%init>
+
+$opt = sub { $m->comp( '/store/options.m', option => shift ) };
+
+$default_vendor = $m->comp('/store/vendor/fetch.m');
+
+$default_vendor ||= {
+	id => 0,
+	name => $opt->('company_name') || $m->comp('.no_default_vendor', setting => 'company_name' ),
+	addr1 => $opt->('shipping_address') || $opt->('company_address') || $m->comp('.no_default_vendor', setting => 'shipping_address or company_address'),
+	city => $opt->('shipping_city') || '',
+	state => $opt->('shipping_state') || '',
+	zip => $opt->('shipping_zip') || ( $opt->('shipping_ups_options') || {} )->{shipper_zip} || $m->comp('.no_default_vendor', setting => 'shipping_zip'),
+	email => $opt->('shipping_tag_email') || $m->comp('.no_default_vendor', setting => 'shipping_tag_email') ,
+	phone => $opt->('company_phone'),
+};
+
+if( $vendor_warning ) {
+	return;
+}
+
+$order = $session->{orders}{$order_number};
+$user = $order->{user};
+
+my $products = $m->comp('/db_fetch.m',
+	query => "SELECT * from product where sku IN (".
+		join( ",", map { $dbh->quote( $_->{sku} ) } @{ $order->{items} } )
+		. " )"
+);
+$m->out( "<p><b>ERROR</b>: We're sorry, but the ordering system cannot accept your ".
+	"order at this time.</p><p>  Please try again in a few moments.  Thank you.</p>"
+),
+return undef unless $#$products > -1;
+
+
+my $catalog = { 
+	map {
+		$_->{sku} => $_
+	} @$products 
+};
+
+$invoice  = $m->scomp( 'invoice.m', order => $order, with_links => 0 );
+$invoice_attachment = $m->scomp( 'invoice_attachment.html', order => $order, with_links => 0 );
+
+my $cc_order = $order->{credit};
+
+my $deep; $deep = sub {
+	my $this = shift;
+	if (not ref $this) {
+		$this;
+	} elsif (ref $this eq "ARRAY") {
+		[map $deep->($_), @$this];
+	} elsif (ref $this eq "HASH") {
+		+{map { $_ => $deep->($this->{$_}) } keys %$this};
+	} else { die "what type is $_?" }
+};
+
+
+unless( $cc_order ) {
+	$cc_order = $deep->( $order );
+	delete $cc_order->{user};
+	delete $cc_order->{shipping_options};
+	$cc_order->{'billing'} = { 
+		'first_name' => $user->{'bill_first'},
+		'last_name' => $user->{'bill_last'},
+		'email' => $user->{'bill_email'},
+		'address1' => $user->{'bill_address1'},
+		'city' => $user->{'bill_city'},
+		'state' => $user->{'bill_state'},
+		'zip' => $user->{'bill_zip'},
+		'phone' => $user->{'bill_phone'},
+		'cc_exp_month' => $session->{'store'}{'cart'}{'cc_expmonth'},
+		'cc_exp_year' => $session->{'store'}{'cart'}{'cc_expyear'},
+	};
+	$cc_order->{'shipping'} = { 
+		'first_name' => $user->{'ship_first'},
+		'last_name' => $user->{'ship_last'},
+		'email' => $user->{'ship_email'},
+		'address1' => $user->{'ship_address1'},
+		'city' => $user->{'ship_city'},
+		'state' => $user->{'ship_state'},
+		'zip' => $user->{'ship_zip'},
+		'phone' => $user->{'ship_phone'},
+	};
+	$order->{credit} = $cc_order;
+} else {
+	warn "session already had the order" if $DEBUG;
+}
+
+
+if( $cc_order->{progress}{processing} && $cc_order->{progress}{complete} ) {  # already complete
+	$cc_response = $cc_order->{response};
+} elsif( $cc_order->{progress}{processing} ) {  # in progress, not yet done.
+	my $timeout = 20;
+	my $tm = time() + $timeout;
+	# wait for it to finish.
+	do {
+		sleep 1;
+		undef $HTML::Mason::Commands::session;
+		$m->comp('/session.m');
+		$session = $HTML::Mason::Commands::session;
+		$order = $session->{orders}{$order_number};
+		$cc_order = $order->{credit};
+		$timeout = $tm - time();
+		warn "still waiting for in-process order - timeout in $timeout" if $DEBUG;
+	} while( ! $cc_order->{progress}{complete} && $timeout > 0 );
+	if( $timeout == 0 && ! $cc_order->{progress}{complete} ) {
+		$page_title = "Processing Order...";
+		$too_long = 1;
+		undef $HTML::Mason::Commands::session;
+		return;
+	}
+} elsif( ! $cc_order->{progress}{processing} ) {
+	$cc_order->{progress}{processing} = 1;
+	if( $dev && $ARGS{'test_result_code'} ) {
+	 	$cc_order->{'cc'} = '4222222222222'; # force a test result
+		$order->{price}{total} = $ARGS{'test_result_code'};
+	}
+	$m->comp( '/session.m', save => 1 );
+	if( $dev ) {
+		my $tm = time();
+	 	while( time() - $tm < $ARGS{'test_delay_seconds'} ) {
+			warn "order still sleeping (". ($ARGS{'test_delay_seconds'} - ( time() - $tm ) ) . ")" if $DEBUG;
+			sleep 1;
+	 	}
+	}
+	$cc_response = $m->comp( $opt->( "payment_processing_module" ), order => { %$cc_order, cc => $cc_number, security => $cc_security } );
+	my $retry = 2;
+	if( ( ! $cc_response || ! $cc_response->{status} ) && --$retry ) { # 3 tries total
+		sleep 3;
+		$cc_response = $m->comp( $opt->( 'payment_processing_module' ),
+			order => { %$cc_order, cc => $cc_number }
+		);
+	}
+	$cc_order->{response} = $cc_response;
+	$m->comp( '/session.m', save => 1 );
+
+	$m->comp( '.save_order', order => $order, response => $cc_response, catalog => $catalog );
+	
+	$cc_order->{progress}{complete} = 1;
+	
+	$m->comp( '/session.m', save => 1 );
+}
+if( $cc_response->{'status'} ne 'success' ) {
+	warn "error processing credit card. status: " . $cc_response->{'status'} . 
+		"text: $cc_response->{response_reason_text} ($cc_response->{'avs_text'})\n" if $DEBUG;
+	$page_title = "Credit Card Not Authorized"
+} else {
+	# page title is defaulted above
+}
+</%init>
+
+
+% if( $dev ) {
+	<p>Test mode - no card has actually been charged.</p>
+% }
+% if( $too_long ) {
+	<p>Your order took longer to process than expected.  This rare condition
+	could be due to a problem connecting with your credit card company or another
+	technical problem.  </p>
+
+	<p>Please wait a moment then reload this page.  If that does not work, and
+	you receive no email confirmation of your order, please retry the
+	transaction.</p>
+	
+	<p>Thank you for your business.</p>
+
+%	return;
+% }
+
+% if( $cc_response->{status} eq 'failure' 
+%	  || $cc_response->{status} eq 'error' 
+%	  || $cc_response->{status} ne 'success' ) {
+%	if( $cc_response->{response_reason_code} == 27 ) {
+		<p><b>Error:</b> Address verification error.  The billing information must match the
+		information on your credit card billing statement.  We encourage you to 
+		<a href="/store/checkout.html">update your billing information</a> before retrying 
+		the transaction.
+		</p>
+%		my $auto_respond_codes = 'USRBEG';
+%		if( $auto_respond_codes =~ /\Q$cc_response->{avs_code}\E/ ) {
+			<p><b>NOTE:</b> Because of the type of error that we've
+			encountered, a customer support agent may contact you
+			directly in order to help fulfill your order.</p>
+%			$m->comp( '.send_avs_error_email', cc_response => $cc_response, order => $order );
+%		}
+</%perl>	
+%	} else {
+<span class="FormError"><center><b>Unable to process your credit card!</b></center></span>
+<p><% $cc_response->{status} %>: <% $cc_response->{'detail'} %></p>
+% if( $cc_response->{status} eq 'error' ) {
+<p>This can be either a configuration error on our part, or you may be 
+attempting a transaction too large for your card.</p>
+% } else {
+<p>This is sometimes caused by mis-entering your card number or expiration date,
+or by having insufficient funds to complete the charge.</P>
+<center>Please <a href="address.html">verify</a> your billing and shipping information before retrying your order.</center></span>
+% }
+%	}
+% } else {
+%	$session->{store}{cart}{items} = [] if $EMPTY_CART_ON_SUCCESS;
+%	$session->{store}{ups}{desired_shipping_method} = undef;
+%   my $rc = $m->comp( ".send_confirmation_email", user => $user, order => $order, attachment => $invoice_attachment, catalog => $catalog );
+%   unless( $rc ) {
+<br>We had a problem emailing your invoice. Please print this page for future reference!<br>
+%     warn "unable to send order confirmation email to " . $user->{'bill_email'} . "!!!\n";
+%   }
+%   unless( $rc = $m->comp(".send_shipping_tag", order => $order ) ) {
+<br>We were unable to notify our shipping department of your order.
+This very rare problem should be addressed by contacting us at your 
+earliest convenience.  Thank you for your business.
+%     warn "unable to send email to " . $user->{'bill_email'} . "!!!\n";
+%   }
+
+%	 my $custom_order = $m->fetch_comp( '/store/order/custom_order.m' );
+%	 if( $custom_order && $cc_response->{status} eq 'success' ) {	
+%		if( ! $order->{on_success_done} ) {
+%			my $success_handler = $custom_order->subcomps('.on_success');
+%			$m->comp( $success_handler, order => $order, catalog => $catalog )
+%				if $success_handler;
+%			$order->{on_success_done} = 1;
+%		}
+<p>Your order was successfully completed. You may 
+<a href="javascript:print()">print</a> 
+this page for your records.  We have also emailed
+a copy of this invoice to: 
+<nobr><span class="ProdSpecTitle"><% $user->{'bill_email'} %></span></nobr>
+</p>
+
+%		if( my $success_display = $custom_order->subcomps('.on_success_display') ) {
+%			$m->comp( $success_display, order => $order, catalog => $catalog );
+%		}
+% 	}
+%   $m->comp('/session.m', save => 1 );
+% warn Data::Dumper::Dumper( $order ) if $DEBUG;
+<% $invoice %>
+
+% }
+
+<%def .round_currency>
+<%perl>
+  my $rounded = sprintf( "%.2f", $amount );
+  return $rounded;
+</%perl>
+<%args>
+$amount
+</%args>
+</%def>
+
+<%def .send_confirmation_email>
+<%args>
+$user
+$order
+$attachment
+$catalog
+</%args>
+<%perl>
+my $email_address = $user->{'bill_email'};
+my $confirm_mail = $m->fetch_comp('/store/order/confirm_mail.m');
+my $contents; 
+if( $confirm_mail ) {
+	$contents = $m->scomp( $confirm_mail, 
+		user => $user, 
+		order => $order,
+		invoice => $order->{order_number}, 
+		catalog => $catalog,
+	);
+} else {
+</%perl>
+% 	if( $dev ) {
+		<& /help.m &>
+		<p><b>Development Note</b>: no confirmation mail sent. 
+		<& /help.m, text => 
+			'No <code>/store/order/confirm_mail.m</code> has '.
+			'been defined. The contents of this file will be '.
+			'emailed to the customer, with an HTML invoice '.
+			'attached, if you create the file. ' 
+		&>
+% 	}
+% 	return 1;
+% }
+<%perl>
+my $email = MIME::Lite->new( 
+  	'From'    => $default_vendor->{email},
+	'To'      => $email_address,
+	'Subject' => $default_vendor->{name}.
+				 ": Order confirmation $order->{order_number}",
+	'Type'    => 'multipart/mixed',
+);
+                              
+
+$email->attach( 'Type' => 'text/plain',
+	'Data' => $contents,
+);
+
+$email->attach( 
+	'Type' => 'text/html',
+	'Data' => "$attachment",
+	'Filename' => $default_vendor->{name}.
+		" Receipt [$order->{order_number}].html",
+	'Disposition' => 'attachment',
+);
+
+# warn Data::Dumper::Dumper( $email );
+
+return( $order->{emailed}{confirmation} ||
+	( $order->{emailed}{confirmation} = $email->send() )
+);
+</%perl>
+</%def>
+
+<%def .send_shipping_tag>
+<%args>
+$order
+</%args>
+<%perl>
+my $email_address = $opt->( 'shipping_tag_email' ) || $default_vendor->{email} || die "Development Error: no shipping_tag_email defined in custom_options.m";
+
+# warn Data::Dumper::Dumper( $order );
+
+# Don't know why CGI would be used. - Joel 20040720
+#my $base_url = CGI::url( -full => 0 );
+my $base_url = $r->hostname;
+$base_url =~ s/(.*www)/www/;
+$base_url =~ s/(\.com).*/$1/;
+warn "base url: $base_url\n";
+
+my $dev_msg = $dev ? "for DEVELOPMENT AND TESTING PURPOSES ONLY - DO NOT SHIP\n" :  '';
+
+my $salesperson = $order->{user}{bill_first} . " ". $order->{user}{bill_last};
+$salesperson = $session->{store}{salesperson} unless( ( $session->{store}{salesperson} eq 'Web' ) || ! $session->{store}{salesperson} );
+
+my $contents = <<EOD;
+
+Order number $order->{order_number} has been completed by $salesperson.
+
+$dev_msg
+The full order details are attached to this message and are also available at:
+
+http://$base_url/store/order/v.html?i=$order->{order_number}
+@{[ $cc_response->{order_fields}{cc_info} ? "\nEncrypted credit-card info follows.  Use PGP's Decrypt/Verify\n".
+"feature to view it.\n\n" : "" ]}
+Regards,
+
+@{[ $opt->('webmaster_name') ]}
+@{[ $email_address ]}
+
+@{[ $cc_response->{order_fields}{cc_info} ]}
+EOD
+
+my $email = MIME::Lite->new( 
+  	'From'    => $email_address,
+	'To'      => $email_address,
+	'Subject' => $default_vendor->{name}. ": Shipping Tag $order->{order_number}",
+	'Type'    => 'multipart/mixed',
+);
+
+$email->attach( 'Type' => 'text/plain',
+	'Data' => $contents,
+);
+$email->attach( 
+	'Type' => 'text/html',
+	'Data' => "$invoice_attachment",
+	'Filename' => 
+		"Order #$order->{order_number} - $order->{user}{bill_first} $order->{user}{bill_last}.html",
+	'Disposition' => 'attachment',
+);
+
+return( $order->{emailed}{shipping_tag} ||
+	( $order->{emailed}{shipping_tag} = $email->send() )
+);
+</%perl>
+</%def>
+
+<%def .send_avs_error_email>
+<%args>
+$cc_response
+$order
+</%args>
+<%perl>
+		my $email_address = $r->server_admin;
+		my $base_url = CGI::url( -full => 0 );
+		$base_url =~ s/(.*www)/www/;
+		$base_url =~ s/(\.com).*/$1/;
+		my $email = MIME::Lite->new(
+			From => $opt->('webmaster_name')." <". $email_address . ">",
+			To => $opt->('service_email') || $default_vendor->{email},
+			Subject => "Address Verification error",
+			Type => 'text/plain',
+			Data => <<EOD );
+
+There was an error verifying a customer's address information and an order
+could not be processed.  The reason for the error was returned from the
+payment processor as follows:
+
+   $cc_response->{avs_text}
+
+To view full details of the order, use the following URL:   
+
+$base_url/store/ecmt/ov.html?i=$order->{order_number}
+
+Regards,
+
+@{[ $opt->('webmaster_name') ]}
+@{[ $r->server_admin ]}
+
+EOD
+
+return ( $order->{emailed}{avs_error} ||
+	( $order->{emailed}{avs_error} = $email->send() )
+);
+</%perl>
+		
+</%def>
+
+
+<%def .save_order>
+<%args>
+$catalog
+$order
+$response
+</%args>
+<%init>
+$session = $HTML::Mason::Commands::session;
+use Date::Manip;
+warn "order is ". Data::Dumper::Dumper( $order ) if $DEBUG;
+my $now = UnixDate( ParseDate( "epoch $order->{date}" ), "%Y-%m-%d" );
+# warn "using date $t" if $DEBUG;
+
+my $map = {
+#	purchase_date => $t,
+	
+	order_number  => $order->{order_number},
+	billto_name   => "$order->{user}{bill_first} $order->{user}{bill_last}",
+	billto_company => $order->{user}{bill_company},
+	billto_po_num => $order->{user}{bill_po_num},
+	billto_addr1  => $order->{user}{bill_address1},
+	billto_addr2  => $order->{user}{bill_address2},
+	billto_city   => $order->{user}{bill_city},
+	billto_state  => $order->{user}{bill_state},
+	billto_zip    => $order->{user}{bill_zip},
+	billto_country => $order->{user}{bill_country},
+	billto_email  => $order->{user}{bill_email},
+	billto_phone  => $order->{user}{bill_phone},
+
+	shipto_name   => "$order->{user}{ship_first} $order->{user}{ship_last}",
+	shipto_company => $order->{user}{ship_company},
+	shipto_addr1  => $order->{user}{ship_address1},
+	shipto_addr2  => $order->{user}{ship_address2},
+	shipto_city   => $order->{user}{ship_city},
+	shipto_state  => $order->{user}{ship_state},
+	shipto_zip    => $order->{user}{ship_zip},
+	shipto_country => $order->{user}{ship_country},
+	shipto_email  => $order->{user}{ship_email},
+	shipto_phone  => $order->{user}{ship_phone},
+	
+	shipping_cost => $order->{price}{shipping},
+	handling_fee  => $order->{price}{handling},
+	discount_pretax		=> $order->{discount_pretax} || 0,
+	discount_posttax	=> $order->{discount_posttax} || 0,
+	tax_rate      		=> $order->{tax_rate},
+	tax_area		=> $order->{tax_area},
+	tax_state		=> $order->{tax_state},
+	tax_amount		=> $order->{price}{tax},
+	subtotal		=> $order->{price}{subtotal},
+	total			=> $order->{price}{total},
+
+	cc_name		  => $order->{card}{name},
+	cc_expire     => $order->{card}{expire},
+	cc_last4      => $order->{card}{last4},
+	cc_type		  => $order->{card}{type},
+	cc_result     => "$response->{status}: $response->{detail}",
+	complete	  => ( $response->{status} eq 'failure' || $response->{status} eq 'error' || $response->{status} ne 'success' ) ? "0" : "1",
+	
+	ip_address    => $r->connection->remote_ip(),
+
+	salesperson => $session->{store}{salesperson} || 'Web',
+	dev_only 	  => $dev ? 'x' : '',
+	
+	shipping_method => $order->{shipping_method},
+	
+	fulfillment_status => 'Pending',
+};
+my $custom_order = $m->fetch_comp( '/store/order/custom_order.m' );
+if( $custom_order && ( my $extra_fields = $custom_order->subcomps('.fields') ) ) {
+	$map = { %$map, %{ $m->comp( $extra_fields ) } };
+}
+
+my $fields = join ", ", keys %$map;
+my $values = join ", ", map { $dbh->quote( $map->{$_} ) } keys %$map;
+
+my( $more_fields, $more_values );
+my $custom_fields = { %{ $response->{order_fields} || {} } }; 
+# !!! more fields, more values from custom-options???
+foreach my $fld( keys %$custom_fields ) {
+	$more_fields .= "$fld, ";
+	$more_values .= $dbh->quote( $custom_fields->{$fld} ). ",";
+}
+
+my $sql = "INSERT into orders( $more_fields $fields, purchase_date ) values( $more_values $values, now() )";
+
+# If we got this far then the database
+#     *has* to be available.
+
+{
+	my $i = 10;
+	STORE_ORDER:
+	warn "Storing order in database\n";
+	my $rc = $dbh->do( $sql );
+	if( ! $rc ) {
+		if( my $t = $m->comp('/db_autocreate.m', def => '/store/order/definition.m', sql => $sql ) ) {
+			return undef if $t == -1;
+			sleep(1) if $i-- < 10;
+			goto STORE_ORDER if $i && $t;
+		}
+		die( "Adding order to database failed!". Data::Dumper::Dumper( $order ) );
+	}
+}
+# !!! make a new record for each shipment
+my $shipments = {};
+my $vendors = { map { $_->{id} => $_ } @{ 
+	$m->comp('/db_fetch.m', query =>
+		"SELECT * FROM order_vendor"
+	)  || []
+} };
+
+my @to_address = (
+	to_name   => "$order->{user}{ship_first} $order->{user}{ship_last}",
+	to_company => $order->{user}{ship_company},
+	to_addr1  => $order->{user}{ship_address1},
+	to_addr2  => $order->{user}{ship_address2},
+	to_city   => $order->{user}{ship_city},
+	to_state  => $order->{user}{ship_state},
+	to_zip    => $order->{user}{ship_zip},
+	to_country => $order->{user}{ship_country},
+	to_email  => $order->{user}{ship_email},
+	to_phone  => $order->{user}{ship_phone},
+);
+my $j = 0;
+foreach my $item( @{ $order->{items} } ) {
+	$j++;
+	my $row = {  # copy of the row, not a reference into the row.
+		%{ $catalog->{ $item->{sku} } } 
+	};
+	unless( $shipments->{$row->{vendor}} ) {
+		warn "storing shipment in database:\n";
+		my @from_address = 
+			map { ( "from_$_" => ( 
+				$vendors->{$row->{vendor}} || $default_vendor 
+				)->{$_} )
+			} qw(name addr1 addr2 city state zip country email phone);
+		warn "shipping from ". Data::Dumper::Dumper( \@from_address );
+		
+		my $t = $m->comp('/record.m',
+			action => 'add',
+			definition => "/store/shipping/definition.m",
+			_callbacks => "/store/shipping/edit.html",
+			_no_continue => 1,
+			_abort_on_error => 1,
+			done => 1,
+			DEBUG => 1,
+
+			order_number => $order->{order_number},
+			status => 'Pending',
+			history => "$now - Order received from ". $r->connection->remote_ip(). "\n",
+			vendor => $row->{vendor} || 0,
+			@from_address,
+			@to_address
+		);
+		warn "New shipment: ". Data::Dumper::Dumper( $t );
+		$shipments->{$row->{vendor}} = $t;
+	}
+	warn Data::Dumper::Dumper( $shipments );
+	my $shipment = $shipments->{$row->{vendor}}{id};
+	$row->{price} = $row->{price} + $item->{upcharge} - $item->{discount};
+	my $ext_price = $row->{price} * $item->{quantity};
+	warn "ext price is $ext_price" if $DEBUG;
+	$sql = "INSERT into order_item( order_number, sequence, quantity, color, sku, short_description, price, price_ext, extra_description, offer, shipment ) ".
+		"VALUES( ". join( ", ",
+			$dbh->quote( $order->{order_number} ),
+			$j,
+			$dbh->quote( $item->{quantity} ),
+			$dbh->quote( $item->{color} ),
+			map( { $dbh->quote( $row->{$_} ) } qw(sku short_description price) ),
+			$ext_price,
+			map( { $dbh->quote( $item->{$_} ) } qw(extra_description offer) ),
+			$dbh->quote( $shipment || 0 ),
+		). " )";
+	$DEBUG++;
+	warn "sql is $sql" if $DEBUG;
+	$DEBUG--;
+	my $i = 10;
+	STORE_ITEM:
+	my $rc = $dbh->do( $sql );
+	if( ! $rc ) {
+		if( my $t = $m->comp('/db_autocreate.m', def => '/store/order/item_definition.m', sql => $sql ) ) {
+			return undef if $t == -1;
+			sleep(1) if $i-- < 10;
+			goto STORE_ITEM if $i && $t;
+		}
+		die "Adding item to database failed!"
+	}
+}
+return;
+</%init>
+<% $sql %>
+</%def>
+<%def .no_default_vendor>
+% unless( $vendor_warning++ ) {
+<h1>Development Error</h1>
+
+<p><b>Note</b>: you can avoid creating the settings below simply by
+<a target="_blank" href="/store/vendor/edit.html?action=add">defining a vendor record</a>.</p>
+
+<p>Then, repost this page to continue processing.</p>
+<hr>
+% }
+<b>Missing setting</b> in /store/custom_options.m: <b><% $ARGS{setting} %></b><br>
+</%def>
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

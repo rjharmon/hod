@@ -1,0 +1,220 @@
+<%shared>
+my $system_fields;
+{
+	my( $f,$o,$d ) = $m->comp('/session/definition.m');
+	$system_fields = $o->{system_fields};
+}
+my $site_edit = $m->fetch_comp('/session/custom_edit.m');
+</%shared>
+<%init>
+warn( "unauthorized" ),
+return 404 unless $m->comp('/session/validate.m', optional => 1 );
+$ARGS{id} ||= $session->{_id};
+unless( $session->{site_admin} ) {
+	$ARGS{id} = $session->{_id};
+	$ARGS{action} = 'edit';
+}
+
+if( $ARGS{done} && $site_edit ) {
+	my $on_post = $site_edit->subcomps('.on_post');
+	$on_post && $m->comp( $on_post, args => \%ARGS );
+}
+$m->comp( '/record.m', %ARGS );
+</%init>
+
+<%def .allow_delete>
+% return undef unless $session->{site_admin};
+% return 1;
+</%def>
+
+<%def .allow_edit>
+<%args>
+$item
+$orig_item
+</%args>
+<%init>
+return undef unless 
+	$m->comp('/session/validate.m', optional => 1);
+$item->{tstamp} = undef;
+return 1 if $session->{site_admin};
+return undef unless $item->{id} eq $session->{_id};
+return 1 unless $orig_item;
+return undef unless $orig_item->{id} eq $session->{_id};
+if( ! $session->{site_admin} ) {
+	foreach( keys %$system_fields ) {
+		$item->{$_} = $orig_item->{$_};
+	}
+}
+return 1;
+</%init>
+</%def>
+
+
+<%def .form>
+<%args>
+$item
+$action
+$opts
+</%args>
+
+<h1><% ucfirst lc $action %>ing Visitor Settings</h1>
+<table>
+<form method=post action="/session/edit.html">
+% my $ref = $ARGS{referer} || $r->header_in('Referer');
+		<input type=hidden name=referer value="<% $ref %>">
+	<input type=hidden name=id value="<% $item->{id} %>">
+
+%	my $addr;
+%	{ no strict 'vars';
+%	my $s = eval $item->{data};
+%	$addr = $s->{store}{user_address};
+%	}
+
+% if( defined $addr ) {
+	<tr><td colspan=2>
+
+		<% $addr->{bill_first} %>&nbsp;<% $addr->{bill_last} %><br>
+% 	if( $addr->{bill_company} ) {
+		<% $addr->{bill_company} %><br>
+% 	}
+		<% $addr->{bill_address1} %><br>
+% 	if( $addr->{bill_address2} ) {
+		<% $addr->{bill_address2} %><br>
+% 	}
+%	my $countries = $m->comp('/store/countries.m');
+		<% $addr->{bill_city} %>,&nbsp;<% $addr->{bill_state} %>&nbsp;&nbsp;<% $addr->{bill_zip} %><br>
+		<% $countries->{ $addr->{bill_country} } %><br>
+		<% $addr->{bill_phone} %><br>
+		<br>
+		<& /email_display.m, email => $addr->{bill_email} &>
+
+	</td></tr>
+% }
+%
+% if( $site_edit ) {
+<tr><td colspan=2>
+<h2 style="margin-bottom:0">Site-Specific Settings</h2>
+<hr>
+</td></tr>
+
+<& $site_edit, %ARGS &>
+<tr><td colspan=2></td></tr>
+% }
+
+
+
+<tr><td colspan=2>
+<br>
+<h2 style="margin-bottom:0">General Settings</h2>
+<hr>
+</td></tr>
+
+% if( $session->{site_admin} ) {
+<tr>
+	<td align=right>Session ID:</td>
+		<td><% $item->{id} %></td>
+</tr>
+
+	<tr>
+		<td align=right>Referer:</td>
+			<td><% $item->{referer} %>
+			</td>
+	</tr>
+
+<tr><td>&nbsp;</td><td><field name=tax_exempt label="Tax-Exempt?"></td></tr>
+% }
+<tr>
+	<td align=right>Email:</td>
+	<td><field name="email" size=30></td>
+</tr>
+
+% if( $session->{site_admin} ) {
+<tr><td colspan=2><& .checkbox, name => 'site_admin', label => "Site Administrator" &></td></tr>
+
+
+<tr><td colspan=2><b>Store Management - Orders</b></td></tr>
+<tr><td>&nbsp;</td><td>
+	<& .checkbox, name => 'orders_view_list', label => "View Orders List" &>
+	<& .checkbox, name => 'orders_view_order', label => "View Order Details" &>
+	<& .checkbox, name => 'orders_view_pricing', label => "Show Order Prices" &>
+</td></tr>
+
+
+<tr><td colspan=2><b>Store Management - Fulfillment</b></td></tr>
+<tr><td>&nbsp;</td><td>
+	<& .checkbox, name => 'fulfill_view_pending', label => "View Pending Orders" &>
+	<& .checkbox, name => 'fulfill_complete_pending', label => "Complete Pending Orders" &>
+	<& .checkbox, name => 'fulfill_view_returns', label => "View Pending and Completed Returns" &>
+</td></tr>
+
+
+<tr><td colspan=2><b>Store Management - Financial Info</b></td></tr>
+<tr><td>&nbsp;</td><td>
+	<& .checkbox, name => 'finance_view_monthly_report', label => "View Report of Monthly Orders Completed" &>
+	<& .checkbox, name => 'finance_view_payments', label => "View List of Payments Sent" &>
+	<& .checkbox, name => 'finance_create_payments', label => "Allow entry of New Payments" &>
+</td></tr>
+
+
+<tr><td colspan=2><b>Store Management - Store Catalog</b></td></tr>
+<tr><td>&nbsp;</td><td>
+	<& .checkbox, name => 'catalog_view_list', label => "View list of Catalog Items" &>
+	<& .checkbox, name => 'catalog_add_items', label => "Add Items to Catalog" &>
+
+	<& /labeled_group.m, 
+		label => $m->scomp('.checkbox', 
+			name => 'catalog_edit_items', 
+			label => "Edit Items in Catalog"
+		),
+		left_margin => 22,
+	&>
+		<& .checkbox, name => 'catalog_edit_description', label => "Descriptions" &>
+		<& .checkbox, name => 'catalog_edit_color', label => "Colors/Sizes/Types" &>
+		<& .checkbox, name => 'catalog_edit_retail', label => "Retail Price" &>
+		<& .checkbox, name => 'catalog_edit_wholesale', label => "Wholesale Price" &>
+		<& .checkbox, name => 'catalog_edit_handling', label => "Handling Fee" &>
+		<& .checkbox, name => 'catalog_edit_misc', label => "Categories, Hot Item, Taxable fields" &>
+	<& /labeled_group.m, end => 1 &>
+%# <& /labeled_group.m, end => 1 &>
+</td></tr>
+% }
+
+<tr><td>&nbsp;</td><td><input type=submit name=done value="Done"></td></tr>
+	<input type=hidden name=action value="<% $action %>">
+</form>
+</table>
+</%def>
+
+<%def .checkbox>
+<%args>
+$label
+$name
+</%args>
+<field name=<% $name %> label="<% $label %>"><br>
+</%def>
+
+
+<%def .record_def>
+<%init>
+return( $m->comp( 'definition.m' ) );
+</%init>
+</%def>
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

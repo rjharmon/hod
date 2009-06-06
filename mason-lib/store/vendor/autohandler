@@ -1,0 +1,16 @@
+<%flags>
+inherit => '/store/manager_autohandler'
+</%flags>
+<%method authenticate>
+<%init>
+return 1 if $m->comp('/session/is_admin.m', area => 'Store Vendor Management',
+	role => [ 'site_admin', 'store_admin' ],
+	silent => 1
+);
+return 0;
+</%init>
+</%method>
+% $m->call_next;
+
+
+<%method HEADER_VMENU></%method>

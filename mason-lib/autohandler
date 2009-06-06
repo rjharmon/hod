@@ -1,0 +1,82 @@
+% ( # warn( "trying post" ), 
+% $m->base_comp->call_method('try_post', %ARGS ) )
+%	if $m->base_comp->method_exists('try_post');
+% $m->call_next();
+% $m->comp('/session.m', no_cookie_required => 1 );
+% if( $session && $session->{site_admin} ) {
+% 	my $id = $m->comp('/foldable.m',
+%		img => '/i/manager.gif',
+%		img_attrs => 'alt="Click for Manager menu" title="Click for Manager menu"',
+%		img_style => 'position:absolute;right:0px;top:0px;z-index:999;-moz-opacity:0.4',
+%	);
+%	$m->comp('/foldable.m', 
+%		id => $id, 
+%		content => $m->scomp('SELF:manager_menu'),
+%		content_style => 'position:absolute;right:0px;top:43px;z-index:999;',
+%		style => 'border:1px solid black; padding:3px; font-size:10px;background-color:#cccccc;'
+% 	);
+% } else {
+% }
+<%method manager_menu>
+% if( $using_dev_db && $dev ) {
+(Dev Database)<br>
+% }
+<div style="position:relative;margin:0;top:0;left:0">
+<script language="Javascript">
+<!--
+function ses_imp( t ) {
+	var v = t.options[t.selectedIndex];
+	t.form.e.value = v.value.substring( 0, v.value.indexOf(":") )
+	t.form.v.value = v.value.substring( v.value.indexOf(":") +1 ) 
+	t.form.submit();
+}
+//-->
+</script>
+	<div style="position:absolute;top:0;left:5px;padding:2px;background-color:#cccccc;z-index:100">Visitors - <a href="/session/list.html">List</a>
+	</div>
+	<div style="position:relative;background:#ddd;color:#000;top:9px;left:0;z-index:99;margin:0;margin-top:3px;border:1px solid black;padding:3px;padding-top:7px">
+		<form style="display:inline" method=POST action="/v.h">
+			<input type=hidden name=impersonate value=1>
+			<input type=hidden name=e value="">
+			<input type=hidden name=v value="">
+			<select name=who style="font-size:10px" onChange="ses_imp(this)">
+				<option value="">Impersonate Recent...
+% foreach( @{ $m->comp('/db_fetch.m',
+%	query => "select id, vcode, vcode_email from session WHERE vcode_email IS NOT NULL and vcode_email<>'' order by tstamp desc limit 5"
+% ) } ) {
+				<option value="<% $_->{vcode_email} %>:<% $_->{vcode} %>"><% $_->{vcode_email} || $_->{id} %>
+% }
+			</select>
+		</form><br>Search:<br>
+		<form style="display:inline" action="/session/list.html"><input type=text name=email size=12 style="font-size:10px"><input type=submit value="Go" style="font-size:10px">
+		</form>
+	</div>
+</div>
+<br>
+<a href="/store/order/reports/">Store Reports</a><br>
+<a href="/store/catalog/">Catalog Manager</a><br>
+<a href="http://<% $server_dns_name %>/stats/cgi-bin/awstats.pl">Usage Statistics</a><br>
+<a href="http://<% $server_dns_name %>/cvsweb/cvsweb.cgi">CVS Repository</a><br>
+<a onClick="return confirm('Log out now?')" href="/session/logout.html">Log Out <% $session->{email} %></a><br>
+
+%# <& keywords.m, %ARGS &>
+</%method>
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

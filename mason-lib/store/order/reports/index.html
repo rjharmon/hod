@@ -1,0 +1,204 @@
+<%init>
+my $pager_options = {
+	table => 'orders',
+	order => 'purchase_date',
+	where => "( dev_only is null or ( dev_only <> 'x' and dev_only <> 1) )",
+	self_url => '/store/order/reports/index.html',
+	definition => '/store/order/definition.m',
+	page_size => $ARGS{unlimited} ? 999999 : 50,
+	DEBUG => 1,
+};
+return $pager_options if $ARGS{opts};
+</%init>
+<%once>
+my $flip = 1;
+my $where_clause;
+</%once>
+<%shared>
+my $view_prices = 0;
+if( $m->comp('/session/is_admin.m', area => 'Store Orders - View Pricing',
+	role => [ 'site_admin', 'orders_admin', 'orders_view_pricing' ],
+	silent => 1
+) ) {
+	$view_prices = 1;
+}
+</%shared>
+<h2>Sales Reports</h2>
+
+% my $fields = $m->scomp('.fields', %ARGS );
+<%def .fields>
+<br><input type=checkbox name=unlimited value=1<% $ARGS{unlimited} ? " CHECKED" : "" %>>&nbsp;All&nbsp;on&nbsp;one&nbsp;page
+</%def>
+
+<& /db_pager.m, %$pager_options, mode => 'filter', args => \%ARGS, extra_fields => $fields, DEBUG => 2 &><br>
+
+<& /store/style.m &>
+
+% if( $ARGS{'View As'} =~ /Graph$/ )  {
+<img src="/store/order/reports/graph.html?\
+% 	foreach( keys %ARGS ) {
+<% $_ |u %>=<% $ARGS{$_} |u %>&\
+% 	}
+">
+% 	return;
+% }
+<center><& /db_pager.m, %$pager_options, mode => 'index', args => \%ARGS &></center> 
+
+
+% $where_clause = $m->comp('/db_pager.m', %$pager_options, mode => 'where_clause', args => \%ARGS );
+<TABLE cellSpacing=0 cellPadding=1 border=1 cols="5" style="font-size: 8pt;border:2px solid black">
+<THEAD>
+<TR valign=bottom>
+	<TD class=t_header align=center>Date/Order #<br>(click to view)</TD>
+	<TD class=t_header align=center>Bill To/Ship To</TD>
+% if( $view_prices ) {
+	<TD class=t_header align=center>Subtotal/<br>Shipping</TD>
+	<TD class=t_header align=center>Tax&nbsp;$/<br>Rate</TD>
+	<TD class=t_header align=center>Total</TD>
+% } else {
+	<TD class=t_header align=center>Shipping Address</td>
+% }
+	<TD class=t_header align=center>Type</TD>
+</TR>
+</THEAD>
+<TBODY>
+<%def .pager_item>
+<%args>
+$item
+</%args>
+<!-- ITEM BEGIN -->
+% $flip = 1 - $flip;
+% my $class = $flip ? "t_row_even" : "t_row_odd";
+<tr valign=top>
+		<TD class="<% $class %>" align=center style="padding-right:8px"><nobr>
+% { my $editable = 0;
+% 	if( $m->comp('/session/is_admin.m', area => 'Store Order Viewing',
+%		role => [ 'site_admin', 'orders_admin', 'orders_view_order'
+%		], silent => 1,
+% 	) ) {
+%		$editable = 1;
+%	}
+%	if( $editable ) {
+		<a href="/store/order/v.html?i=<% $item->{order_number} %>">
+%	}
+			<% $item->{purchase_date} %><br>
+			<% $item->{complete} ? $item->{order_number}: "failed order" %>
+%	if( $editable ) {
+		</a>\
+%	}
+</nobr></TD>
+% }
+		<TD class="<% $class %>" align=left><nobr><% $item->{billto_name} %>
+% if( $item->{billto_name} ne $item->{shipto_name} ) {
+		<br><% $item->{shipto_name} %></nobr></TD>
+% }
+% if( $view_prices ) {
+		<TD class="<% $class %>" align=right><nobr><% $item->{subtotal} %><br>
+			<% sprintf( "%.2f", $item->{shipping_cost} + $item->{handling_fee} ) %></nobr></TD>
+		<TD class="<% $class %>" align=right style="padding-left:8px"><nobr>$&nbsp;<% $item->{tax_amount} %>&nbsp;&nbsp;&nbsp;
+			<% 0 + $item->{tax_rate} ? "<br>". $item->{tax_rate} * 100 . "%" : "" %></nobr></TD>
+		<TD class="<% $class %>" align=right><nobr><% $item->{total} %></nobr></TD>
+% } else {
+	<TD class="<% $class %>">
+		<% $item->{shipto_company} |h %><br>
+		<% $item->{shipto_addr1} |h %><br>
+%	if( $item->{shipto_addr2} ) {
+		<% $item->{shipto_addr2} |h %><br>
+%	}
+		<% $item->{shipto_city} |h %>, <% $item->{shipto_state} %> <% $item->{shipto_zip} %><br>
+%	if( $item->{shipto_country} ne 'US' ) {
+		<% $item->{shipto_country} %><br>
+%	}
+		<& /email_display.m, email => $item->{shipto_email} &><br>
+		<% $item->{shipto_phone} %><br>
+	</td>
+% }
+		<TD class="<% $class %>" align=right align=right><nobr><% $item->{salesperson} || 'Web' %></nobr></TD>
+	</tr>
+% if( $item->{answered_ad} || $item->{ad_referer}) {
+	<tr>
+		<td colspan=1>Ad: <% $item->{answered_ad} || 'none' %></td>
+		<td colspan=4>Referrer: <% $item->{ad_referer} %></td>
+	</TR>
+% }
+<!--ITEM END -->
+</%def>
+
+<& /db_pager.m,
+	%$pager_options,
+	mode => 'list',
+	args => \%ARGS,
+	order => 'purchase_date ASC'
+&>
+
+% my $totals = $m->comp('/db_fetch.m', query =>
+%	"SELECT sum( subtotal ) subtotal, sum( tax_amount ) tax, ".
+%	"sum( shipping_cost + handling_fee ) s_n_h, ".
+%	"sum( total ) total from orders WHERE ". $where_clause
+% ); $totals = $totals->[0];
+</TBODY>
+<TFOOT>
+% if( $view_prices ) {
+<tr>
+	<td class="t_row_subtotal" colspan="2">(Totals include records <br>&nbsp;&nbsp;&nbsp;&nbsp;from all pages of this report)</b></td>
+	<td class="t_row_subtotal" align="right"><strong><% $totals->{subtotal} %><br>s/h:<% $totals->{s_n_h} %></strong></td>
+	<td class="t_row_subtotal" align="right"><strong><% $totals->{tax} %></strong></td>
+	<td class="t_row_subtotal" style="padding-left:8px" align="right"><strong><% $totals->{total} %></strong></td>
+	<td class="t_row_subtotal" align="center">&nbsp;</td>
+</tr>
+% }
+% if( 
+%	( my $commissions = $m->comp('/store/options.m', option => 'commissions' ) )
+%	&& 	$m->comp('/session/is_admin.m', role => 'site_admin' )
+% ) {
+<tr>
+	<td class="t_row_subtotal" colspan="2">Commission Information<br>
+		&nbsp;&nbsp;&nbsp;- only displayed for 'admin' user<br>
+		&nbsp;&nbsp;&nbsp;- Simple calculation based on report totals above
+
+		</b></td>
+	<td class="t_row_subtotal" align="right" colspan=4><strong>
+%	my $total = 0;
+% 	foreach( sort keys %$commissions ) {
+%		my $rate = $commissions->{$_};
+%		my $rt = $rate;
+%		$rate =~ s|(.*)\%|$1 / 100|e;
+%		my $amt = sprintf( "%.2f", $rate * $totals->{subtotal} );
+		<% ucfirst lc $_ %> @ <% $rt %>: <% $amt %><br>
+%		$total += $amt;
+%	}
+	Total: <% sprintf( "%.2f", $total ) %>
+</strong></tr>
+% }
+</TFOOT>
+</table>
+
+<center><& /db_pager.m, %$pager_options, mode => 'index', args => \%ARGS &></center>
+
+
+
+<%def .not_found>
+<tr><td colspan="100%">No Records found</td></tr>
+</%def>
+
+
+
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

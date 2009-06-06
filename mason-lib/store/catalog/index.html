@@ -1,0 +1,43 @@
+<%method .doc_synopsis>
+<b>Store Catalog Manager</b> - Displays the product catalog with your choice of formatting and filtering.
+</%method>
+<%method .doc>
+<h2>Description</h2>
+
+<p>The store catalog manager provides an easy-to-use interface for viewing,
+organizing, updating and maintaining your online store catalog.  It provides
+multiple ways to filter your product line and multiple ways to view the
+product line, as well as viewing the photographs associated with your
+products.  It even lets you upload your own photos!</p>
+
+<h2>Usage</h2>
+
+<p>To use the store catalog manager, first ensure that the administrators
+have enabled the database to use your catalog.  Next, define a
+<code>/store/catalog/login.m</code> that authenticates the incoming user
+to protect access to the catalog.  You may wish to use
+<a href="/doc.html?module=/password.mason">/password.mason</a>
+for this purpose.</p>
+
+<pre><% <<EOD
+<\%init>
+return 0 unless \$m->comp('/password.mason',
+   realm => 'Store Manager',
+   allow => { qw(
+      admin ei436dmns8
+   ) },
+   production => 1
+);
+return 1;
+</\%init>
+EOD
+ |h %></pre>
+
+</%method>
+
+<& list.html, %ARGS &>
+
+<%method title>
+<& PARENT:title &> - Catalog Management
+</%method>
+

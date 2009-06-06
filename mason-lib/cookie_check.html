@@ -1,0 +1,378 @@
+<%method .title>
+Force Browser to Use Cookies
+</%method>
+<%method .doc_synopsis>
+Verifies that a cookie is properly set before allowing the user to continue browsing.
+</%method>
+<%method .doc>
+<h2>Usage</h2>
+<p>The cookie_check module is used by the built-in 
+<a href="/doc.html?module=/session.m">session.m</a> module to 
+verify proper setting of the session cookie.  You may also use 
+this module, at your discretion, for the same purpose.</p>
+
+<p>If the cookie is set properly (or, if the <code>required</code> 
+parameter is set to 0),the browser is redirected to 
+a provided URL and the user's experience is totally seamless.  
+</p>
+
+<p>If the cookie is not set, a helpful message is displayed to
+explain the situation to the user, along with instructions for
+the user to learn how to activate cookies (usually not 
+necessary, as a no-cookies user usually already knows how to 
+enable cookies).  
+</p>
+
+<p>The instructions given include a link to 
+<code>/privacy_policy.html</code>.  It's good practice to have a 
+privacy policy, and it's your site's responsibility to include it
+or have a broken link from the cookie-check page.  </p>
+
+<p>We provide a default template for privacy policies.  We suggest you <a
+href="/doc.html?module=/privacy_template.html">read the doc</a> for it.</p>
+
+
+<h2>Alternate Usage</h2>
+
+<p>You may also use this module for simply checking whether a cookie
+was set.  In this mode, no redirection is performed and nothing is 
+displayed. instead, the caller receives a true/false indication of 
+whether the named <code>$cookie</code> is set.  Simply pass 
+<nobr>check_only =&gt; 1</nobr> to your call, and test the result.
+</p>
+
+<h2>Parameters</h2>
+
+<p>Two parameters are required to use the cookie_check module:</p>
+
+<ul>
+	<li><p><b>url</b>: the URL that the browser should go to if 
+		the cookie is set properly.</p>
+
+	<li><p><b>cookie</b>: the name of the cookie that is checked for.</p>
+
+	<li><p><b>check_only</b>: if true, the module returns true or false 
+		to indicate whether the cookie exists, and <em>does nothing else</em>.</p>
+</ul>
+
+</%method>
+<%init>
+warn "cookie check";
+my $DEBUG = 2;
+use Apache::Constants qw(:response);
+use CGI::Cookie;
+my $cookies = $r->header_in('Cookie');
+my %cookies = CGI::Cookie->parse( $cookies );
+warn "Checking for cookie..." if $DEBUG > 1;
+warn "cookies: ".Data::Dumper::Dumper( \%cookies ); # if $DEBUG > 2;
+my $v;
+if( ( $cookies{$cookie} && ( $v = $cookies{$cookie}->value() ) ) || ! $required) {
+	return 1 if $check_only;
+	if( $required ) {
+		warn "Cookie check OK ($v)" if $DEBUG;
+		if( $referer && $cookie eq 'session' ) {
+			$m->comp('/session.m');
+			$session->{entry_page} = $url unless $session->{entry_page};
+			$session->{referer} = $referer;
+			$m->comp('/session.m', save => 1 );
+		}
+	} elsif( ! $v ) {
+		warn "Cookie check not OK, but we still want the visitor." if $DEBUG;
+	}
+	warn "Cookie check sending user back to $url" if $DEBUG > 1;
+	$r->header_out('Location', $url );
+	$r->status( MOVED );
+	$r->content_type( "text/html" );
+	$r->send_http_header;
+	return 1;
+}
+return 0 if $check_only;
+</%init>
+% unless( $m->callers(1) ) {
+%	my $headers = $r->headers_out;
+%	$headers->{'Pragma'} = $headers->{'Cache-control'} = 'no-cache';
+%	$r->no_cache(1);
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html>
+<head>
+<title>Cookies Disabled</title>
+</head>
+<body>
+% } else {
+<!-- cookie_check.html: skipped <html><head></head><body> because an autohandler is in use: <% $m->callers(1)->title %> -->
+% }
+<h1>Your Cookies are Disabled!</h1>
+
+	<p>This web site requires the use of cookies. Please adjust your browser 
+	to accept cookies to continue browsing the site.</p>
+	
+	<p>Please <a href="#HowToCookie">enable cookies</a> with our easy to follow directions, 
+	and <a href="<% $url %>">click here</a> to continue.</p>
+	
+	<p>The cookie we set is completely safe.  It never contains any
+	personal or private information nor is it ever shared with a 
+	third party.  For technical information, see below.  For policy
+	information, read our <a href="/privacy_policy.html">privacy policy</a>.
+
+<p>
+<h2>The Cookie Explained</h2>
+<p>
+The cookie we create is a small text file (less than 150 bytes in size) 
+which is stored on your computer's hard drive while visiting certain 
+web pages.  We use this cookie to provide you the smoothest possible
+experience while you visit our site.  
+</p>
+
+<p>In web stores, the cookie helps us remember what's in your shopping 
+cart.  For other types of sites, we use it to remember your viewing 
+preferences for your next visit.  The cookie also
+works as an added security measure so that we don't confuse you 
+with another web site visitor. </p>
+
+<p>Our cookie contains only internal information needed to ensure that your 
+visit with us is a safe, secure and enjoyable one.  
+The cookie is designed using cryptographic techniques to guarantee that 
+we generated it, and that it's uniquely different from every other cookie 
+we've issued.  By 
+combining our respect for your privacy with sophisticated technology,
+this gives you a convenient, feature-rich and <em>safe</em> browsing 
+experience.
+<p>
+
+<a name="HowToCookie"></a>
+
+<p>
+<h2>How to Enable Cookies</h2>
+
+<P class=cookies>To set your browser to accept cookies:</P>
+<TABLE cellSpacing=5 cellPadding=0 width="100%" border=0>
+<TBODY>
+<TR>
+<TD class=cookies colSpan=2><B>AOL for Mac</B></TD></TR>
+<TR>
+<TD class=cookies vAlign=top align=middle width="6%">1.</TD>
+<TD class=cookies width="94%">Go to <B>Keyword: Preferences</B> and click the 
+link to <B>Internet Properties (WWW)</B>.</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">2.</TD>
+<TD class=cookies width="94%">Click the <B>Advanced Settings</B> 
+button.</TD></TR>
+<TR>
+<TD class=cookies vAlign=top align=middle width="6%">3.</TD>
+<TD class=cookies width="94%">In the left pane, double-click <B>Receiving 
+Files</B> to expand the list (if necessary).</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">4.</TD>
+<TD class=cookies width="94%">Click on <B>Cookies</B>.</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">5.</TD>
+<TD class=cookies width="94%">In the <B>When receiving cookies</B> list box, 
+select <B>Never ask</B>.</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">6.</TD>
+<TD class=cookies width="94%">Click <B>OK</B>.</TD></TR>
+<TR align=left>
+<TD class=cookies colSpan=2><B>AOL for Mac OS X</B></TD></TR>
+<TR>
+<TD class=cookies vAlign=top align=middle width="6%">1.</TD>
+<TD class=cookies width="94%">Go to <B>Keyword: Preferences</B> and click the 
+link to <B>Internet Properties (WWW)</B>.</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">2.</TD>
+<TD class=cookies width="94%">Select the <B>Cookies</B> tab.</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">3.</TD>
+<TD class=cookies width="94%">Select <B>Enable all cookies</B>.</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">4.</TD>
+<TD class=cookies width="94%">Click <B>OK</B>.</TD></TR>
+<TR>
+<TD class=cookies colSpan=2><B>AOL for Windows</B></TD></TR>
+<TR>
+<TD class=cookies vAlign=top align=middle width="6%">1.</TD>
+<TD class=cookies width="94%">Start Internet Explorer. To do this, click the 
+<B>Start</B> button, point to <B>Programs</B>, and click <B>Internet 
+Explorer</B> (or double-click the Internet Explorer icon on your 
+desktop).</TD></TR>
+<TR>
+<TD class=cookies vAlign=top align=middle width="6%">2.</TD>
+<TD class=cookies width="94%">Determine which version of Internet Explorer you 
+have on your computer. To do this, go to the <B>Help</B> menu (in Internet 
+Explorer) and click <B>About Internet Explorer</B>.</TD></TR>
+<TR>
+<TD class=cookies vAlign=top align=middle width="6%">3.</TD>
+<TD class=cookies width="94%">In the <B>About Internet Explorer</B> box look 
+for the <B>Version</B> information (usually in the first line of 
+text).</TD></TR>
+<TR>
+<TD class=cookies vAlign=top align=middle width="6%">4.</TD>
+<TD class=cookies width="94%">Follow the steps below for the version of 
+Internet Explorer that you have on your computer.</TD></TR>
+<TR>
+<TD class=cookies colSpan=2><B>Internet Explorer 4.x</B></TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">1.</TD>
+<TD class=cookies width="94%">Go to the <B>View</B> menu and choose <B>Internet 
+Options</B>.</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">2.</TD>
+<TD class=cookies width="94%">Click on the <B>Advanced</B> tab.</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">3.</TD>
+<TD class=cookies width="94%">Scroll down to the section titled 
+<B>Cookies</B>.</TD></TR>
+<TR>
+<TD class=cookies vAlign=top align=middle width="6%">4.</TD>
+<TD class=cookies width="94%">Click one of the radio buttons to either 
+<B>Prompt before accepting cookies</B> or <B>Always accept 
+cookies</B>.</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">5.</TD>
+<TD class=cookies width="94%">Click <B>OK</B>.</TD></TR>
+<TR>
+<TD class=cookies colSpan=2><B>Internet Explorer 5.x</B></TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">1.</TD>
+<TD class=cookies width="94%">Go to the <B>Tools</B> menu and choose 
+<B>Internet Options</B>.</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">2.</TD>
+<TD class=cookies width="94%">Click on the <B>Security</B> tab.</TD></TR>
+<TR>
+<TD class=cookies vAlign=top align=middle width="6%">3.</TD>
+<TD class=cookies width="94%">Select <B>Internet</B> in the <B>Web content 
+zone</B> and then click the <B>Custom Level</B> button.</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">4.</TD>
+<TD class=cookies width="94%">Scroll down to the section titled 
+<B>Cookies</B>.</TD></TR>
+<TR>
+<TD class=cookies vAlign=top align=middle width="6%">5.</TD>
+<TD class=cookies width="94%">For the option <B>Allow cookies that are stored 
+on your computer</B>, click <B>Enable</B> or <B>Prompt</B>.</TD></TR>
+<TR>
+<TD class=cookies vAlign=top align=middle width="6%">6.</TD>
+<TD class=cookies width="94%">For the option <B>Allow per-session cookies</B> 
+(not stored), click <B>Enable</B> or <B>Prompt</B>.</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">7.</TD>
+<TD class=cookies width="94%">Click <B>OK</B>.</TD></TR>
+<TR>
+<TD class=cookies colSpan=2><B>Internet Explorer 6</B></TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">1.</TD>
+<TD class=cookies width="94%">Go to the <B>Tools</B> menu and choose 
+<B>Internet Options</B>.</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">2.</TD>
+<TD class=cookies width="94%">Select the <B>Privacy</B> tab.</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">3.</TD>
+<TD class=cookies width="94%">Click the <B>Default</B> button and then click 
+<B>Apply</B>.</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">4.</TD>
+<TD class=cookies width="94%">Click <B>OK</B>.</TD></TR>
+<TR>
+<TD class=cookies colSpan=2><B>Netscape Navigator 4.x</B></TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">1.</TD>
+<TD class=cookies width="94%">Launch Netscape Navigator.</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">2.</TD>
+<TD class=cookies width="94%">Go to the <B>Edit</B> menu and choose 
+<B>Preferences</B>.</TD></TR>
+<TR>
+<TD class=cookies vAlign=top align=middle width="6%">3.</TD>
+<TD class=cookies width="94%">Go to the <B>small window on the left side</B> of 
+the dialog box and click on the word <B>Advanced</B>.</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">4.</TD>
+<TD class=cookies width="94%">In the section titled <B>Cookies</B>, choose 
+<B>Accept all cookies</B>.</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">5.</TD>
+<TD class=cookies width="94%">Click <B>OK</B>.</TD></TR>
+<TR>
+<TD class=cookies colSpan=2><B>Netscape Navigator 6.x</B></TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">1.</TD>
+<TD class=cookies width="94%">Open the <B>Edit</B> menu and choose 
+<B>Preferences</B>.</TD></TR>
+<TR>
+<TD class=cookies vAlign=top align=middle width="6%">2.</TD>
+<TD class=cookies width="94%">Under the <B>Privacy &amp; Security</B> category, 
+choose <B>Cookies</B> (if no subcategories are visible, double-click the 
+category to expand the list).</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">3.</TD>
+<TD class=cookies width="94%">Click the radio button to <B>Enable all 
+cookies</B>.</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">4.</TD>
+<TD class=cookies width="94%">Click <B>OK</B>.</TD></TR>
+<TR>
+<TD class=cookies colSpan=2><B>Netscape 7.0</B></TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">1.</TD>
+<TD class=cookies width="94%">Go to the <B>Edit</B> menu and select 
+<B>Preferences</B>.</TD></TR>
+<TR>
+<TD class=cookies vAlign=top align=middle width="6%">2.</TD>
+<TD class=cookies width="94%">Under the <B>Privacy &amp; Security</B> category, 
+choose <B>Cookies</B> (if no subcategories are visible, double-click the 
+category to expand the list).</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%" height=12>3.</TD>
+<TD class=cookies width="94%" height=12>Select <B>Enable all 
+cookies</B>.</TD></TR>
+<TR>
+<TD class=cookies align=middle width="6%">4.</TD>
+<TD class=cookies width="94%">Click <B>OK</B>.</TD></TR></TBODY></TABLE>
+
+
+<P class="ProdSpecTitle">All other browsers</p>
+<ul><li>Please consult your documentation or online help files.</li></ul>
+% unless( $m->callers(1) ) {
+</body></html>
+% } else {
+<!-- cookie_check.html: skipped </body></html> because an autohandler is in use -->
+% }
+
+<%args>
+$cookie => 'session'
+$url => undef
+$check_only => undef
+$referer => undef
+$required => 1
+</%args>
+
+<%method .session_no_cookie_required>
+The existence of this method prevents the session module from trying to set a cookie 
+for this page.
+</%method>
+
+<%method .skip_login_requirement>
+The existence of this method allows /password.mason to skip the login requirement
+when this page is being served.
+</%method>
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

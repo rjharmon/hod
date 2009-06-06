@@ -1,0 +1,966 @@
+<%method .doc_synopsis>
+Shopping cart/shopping bag management
+</%method>
+<%method .doc>
+<h2>Usage</h2>
+<p>The shared shopping cart/shopping bag manager provides a default 
+interface that's customizable for individual sites.  It provides the 
+ability to add or remove items from the shopping bag, change 
+quantities, and display the contents of the shopping bag.</p>
+
+<ul> 
+
+	<li><p>To add an item to the shopping cart, use the URI:
+	<nobr><code>/store/shop/index.html?add_sku=SKU&quantity=2</code></nobr>, 
+	where <code>SKU</code> is the item number to be added, and quantity is 
+	the optional number to add (default: 1).</p>
+
+	<li><p>Deleting items from the shopping cart and changing quantities
+	is managed through the user interface provided by this module.</p>
+
+	<li><p>To drop all items from the shopping cart, use the URI:
+	<nobr><code>/store/shop/index.html?drop_item=all</code></nobr>.  All
+	items will be removed without further confirmation.</p>
+
+</ul>
+
+<P>The item is added to or removed from the shopping
+cart with a confirmation message, or the quantity is changed.  The new
+shopping cart contents are displayed. </p>
+
+<h2>Advanced Usage</h2>
+
+<h3>Including Color Choices</h3>
+
+<p>You may include color choices for individual products, as described in the 
+store <a href="/doc.html?module=/store/catalog/index.html">Catalog Manager</a>.  
+The shopping cart will automatically prompt for color choices, or you can place 
+a dropdown for color choices into a form next to the Buy button - this can 
+decrease the number of steps required for your customer to buy your products.</p>
+
+<pre><% <<EOD
+<\& /store/shop/color_choices.m, item => \$item &\>
+
+or
+
+<& /store/shop/color_choices.m, sku => \$sku &\>
+EOD
+ |h %></pre>
+
+<p>See the <a href="/doc.html?module=/store/shop/color_choices.m">documentation for 
+<code>/store/shop/color_choices.m</code></a> for more details.</p>
+
+<h3>Ordering Multiple Products from a Single Web Form</h3>
+
+<p>If your products lend themselves to ordering more than one at a time, you
+can use an enhanced type of form for submitting all these items at once. 
+First, make your form span all of the products your customers can purchase
+from one web page, instead of using separate forms for each product. 
+Second, replace the <code>quantity</code> field with the
+<code>quantity_&lt;SKU&gt;</code> field, where &lt;SKU&gt; is replaced with
+the SKU number for each product.  Finally, be sure to include a separate
+<code>add_sku</code> field for each item.</p>
+
+<pre><% <<EOD
+<form action="/store/shop/index.html" method=post>
+<p>My item #1: 
+<select name="quantity_PROD-001">
+	<option>1
+	<option>2
+	<option>3
+	<option>4
+</select>
+<input type=hidden name=add_sku value="PROD-001">
+</p>
+
+<p>My item #2:
+<select name="quantity_PROD-002">
+	<option>1
+	<option>2
+	<option>3
+	<option>4
+</select> 
+<input type=hidden name=add_sku value="PROD-002">
+</p>	
+<p><input type=submit value="Add selected Items"> 
+to your shopping cart</p>
+</form>
+EOD
+ |h %></pre>
+
+<h3>Including Custom Fields for Shopping Cart Items</h3>
+
+<p>If your items all have a special field such as size, an engraving option 
+or you-name-it, you can specify the field names in <code>/store/custom_options.m</code> as 
+<code>shop_custom_fields_global</code>.  Just include that field name in 
+your fill-out form, and the value will be stored in the shopping cart.</p>
+
+<p>This allows your custom to purchase any combination of Green Widgets
+(small), Green Widgets (large), and Blue Widgets (Medium), individually 
+adjusting quantities for these separately.</p>
+
+<p>You may wish to define a custom layout (<code>cart_item_description</code>)
+for such items in your shopping cart, to help differentiate onscreen between 
+Blue Widgets [the medium-sized ones] and Blue Widgets [the small-sized ones].</p>
+
+<p>Use of this custom field along with "Adding Multiple Items" is not yet 
+supported, but ask us if you have such a need.</p>
+
+<h2>Prerequisites</h2>
+
+<p>In order to use this component, the following prerequisites must be fulfilled:</p>
+
+<ul>
+
+	<li><p>The web site must be configured with a Mysql database.</p>
+	
+	<li><p></p>
+
+</ul>
+
+<h2>Customizing</h2>
+
+<p>Most web sites will want to perform some customization of the 
+shopping system. The primary areas of customization are colors, options,
+and layout.</p>
+
+<h3>Colors</h3>
+
+<p>Colors and font sizes are customized through CSS, or Cascading Style
+Sheets.  There are many reference manuals available online or in book form
+that can provide more detailed information on how to use CSS.  See 
+<a href="#app_css">Appendix A: CSS selectors</a> for a template of CSS 
+selectors you can use to completely customize your colors.</p>
+
+<h3>Options</h3>
+
+<p>There are various options you can set to affect the behavior of the
+shopping system.  These are specified in your site's
+<code>/store/custom_options.m</code> file.  See the documentation for
+<a href="/doc.html?module=/store/options.m">/store/options.m</a> 
+for information on how to format the options file.  The options recognized
+by the cart manager are: </p>
+
+<ul>
+
+	<li><p>In progress.</p>
+
+	<li><p><code>continue_url</code>: Specifies the URL to use for continued 
+	shopping.</p>
+
+	<li><p><code>checkout_url</code>: Specifies the URL to use for checkout.  
+	May be phased out.</p>
+
+	<li><p><code>product_detail_url</code>: Specifies the default URL to use for 
+	the product detail screen.  Used when displaying a product description, so 
+	that it's clickable.  The default is "/store/product_detail.html".  If you
+	create a custom product detail page, it must use a different URL,
+	and it must take a 'sku' parameter.  This URL is used if a product record
+	does not have a URL specific to that product.</p>
+
+	<li><p><code>shopping_cart_desc</code>: Specifies an alternate label for the
+	shopping cart, such as "cart" or "shopping bag".</p>
+
+</ul>
+
+<h3>Layout</h3>
+
+<p>The shopping bag manager provides a default layout for the entire shopping 
+cart display.  Your site's look and feel is automatically used, and any of the 
+following custom layout sections 
+from <code>/store/shop/custom_cart.html</code>
+will be used in favor of default ones, if they 
+are defined.</p>
+
+<p>To define one of these custom layout sections, create 
+<code>/store/shop/custom_cart.html</code>; 
+in that file, define a <\%def> section with the given name.  For instance:
+</p>
+
+<pre><% <<EOD
+<\%def cart_before_form>
+<center>
+</\%def>
+
+<\%def cart_after_form>
+</center>
+</\%def>
+EOD
+ |h %></pre>
+
+
+
+<ul>
+
+	<li><p><code>cart_on_add</code>: HTML that's inserted before the start-of-form
+	when an item is added to the shopping cart.  <code>$item</code>, <code>$color</code>
+	and <code>$quantity</code> are provided to this callback.</p>
+
+	<li><p><code>cart_on_delete</code>: HTML that's inserted before the start-of-form
+	when an item is removed from teh shopping cart.  <code>$item</code> and <code>$cart_item</code>
+	are provided to this callback, as described below.</p>
+
+	<li><p><code>cart_before_form</code>: HTML that's inserted before the 
+	start-of-form during display of the shopping cart contents.</p>
+
+	<li><p><code>cart_top_of_form</code>: included immediate after the top-of-form
+	tag; suitable for including hidden form fields, for instance.</p>
+
+	<li><p><code>cart_table_header</code>: The table row identifying column 
+	headers for your cart contents display.  If you define this setting, it
+	<em>overrides</em> the default table header row.</p>
+
+	<li><p><code>cart_item_description</code>: Various built-in messages use a 
+	default way of displaying an item in the shopping cart.  By overriding this
+	setting, you can affect all such messages.  
+</p>
+
+Use this <\%args> section:</p>
+
+<pre><% <<EOD
+<\%args>
+\$item
+\$catalog_item
+\$preformatted
+</\%args>
+EOD
+ |h %></pre>
+
+	<p>The <code>$item</code> variable contains the item entry from the shopping cart; 
+	<code>$catalog_item</code> contains the item entry from the store catalog; 
+	<code>$preformatted</code> contains the formatted item name, as it would have been
+	displayed if you had not defined this layout element (useful if you just want to add
+	a small tidbit to the end of the normally-displayed item description).</p>
+
+	<li><p><code>cart_item_name</code>: The default item formatter will insert 
+	the item name, with formatting and with a link for viewing the product detail 
+	screen.  If you define this setting, you'll get the opportunity to display it
+	in any way you wish.  The interface is the same as for 
+	<code>cart_item_description</code>.</p>
+
+	<li><p><code>cart_item_row</code>: By overriding this display method, you can create a 
+	totally customized display for each item in your cart.  Note that the other cart_item_ 
+	display methods are <em>not</em> used if you use this approach!  You must include 
+	&lt;tr&gt; and &lt;/tr&gt; tags.  The interface is the same as described for 
+	cart_item_name, so you can use the <code>$preformatted</code> content that would have 
+	been displayed, at your discretion.  Also supported:</p>
+
+	<ul>
+
+		<li><p><code>$price</code>: contains the product price after upcharges and discounts
+		 are applied.</p>
+
+		<li><p><code>$fingerprint</code>: contains an item fingerprint to be used in 
+		the quantity-update or drop-item fields:</p>
+	
+		<pre><% <<EOD
+<INPUT TYPE=TEXT name="quantity_update_\\
+<\% \$fingerprint %\>" \\
+value="<\% \$cart_item->{quantity} %\>">
+
+<a href="/store/shop/index.html?drop_item=\\
+<\% \$fingerprint %\>>Drop Item</a>
+EOD
+		 |h %></pre>		
+		<p>NOTE: Neither of these lines should contain line breaks; the trailing "\"'s 
+		above should be read as "not a line break".</p>
+	</ul>
+
+	<li><p><code>cart_item_drop_text</code>: Sets the text shown for
+	dropping a shopping cart item.  This can inclue any HTML including
+	images.  If not defined, "Drop&amp;nbsp;Item" is used instead.</p>
+
+	<li><p><code>cart_item_drop_attr</code>: Sets attributes used on the
+	&lt;a&gt; tag for dropping a shopping cart item.  The default value 
+    is passed with the <code>$preformatted</code> parameter (it's currently
+	a JavaScript onClick confirmation).  </p>
+
+	<li><p><code>cart_after_form</code>: Included after the close-of-form.</p>
+
+</ul>
+
+<h2>Parameters</h2>
+
+<h2>Appendices</h2>
+
+<a name="app_css"></a><h3>Appendix A: CSS selectors</h3>
+
+<ul>
+
+	<li><p><code>cart_interaction_text</code>: Text displayed by the shopping cart 
+	when further interaction is required, often when choosing colors or custom per-
+	item choices in the cart.</p>
+
+	<li><p><code>cart_update_message</code>: Text displayed as a status message that 
+	the cart has been updated.</p>
+
+	<li><p><code>cart_error_message</code>: Text displayed as an error message during 
+	cart processing.</p>
+
+	<li><p><code>cart_content_header</code>: The header row for the shopping cart
+	contents table.</p>
+
+	<li><p><code>cart_content_text</code>: The shopping cart contents table.</p>
+
+	<li><p><code>cart_footer_text</code>: The text in the footer area of the cart table; 
+	labels for subtotals.</p>
+
+	<li><p><code>cart_footer_amount</code>: The values in the footer area of the cart 
+	table, excluding the total.</p>
+
+	<li><p><code>cart_footer_total</code>: The total dollar amount of the order
+	(if available; sales tax may not be calculable if the end user has not entered 
+	their address information).</p>
+
+</ul>
+
+<p>Use the following template for setting up your custom style sheet</p>
+<pre><% <<EOD
+.cart_interaction_text {
+}
+.cart_update_message {
+	font-weight: bold;
+}
+.cart_error_message {
+	font-weight: bold;
+	font-color: red;
+}
+.cart_content_header {
+	background: #806d7e;
+}
+.cart_content_text {
+}
+.cart_footer_text {
+}
+.cart_footer_amount {
+}
+.cart_footer_total {
+}
+EOD
+ |h %></pre>
+</%method>
+<%args>
+$quantity => undef
+$color => undef
+$type => undef
+$debug => 0
+</%args>
+<%once>
+my $shop_url;
+my $checkout_url;
+my $clear_items_url;
+my $DEBUG;
+my $custom_display;
+my $cart_items;
+my $catalog_index;
+my $msg_item;
+my $cart_label;
+use Apache::Constants qw(:response);
+use Digest::SHA1 qw(sha1_hex);
+</%once>
+<%init>
+$DEBUG = 4;# $debug;
+$m->comp('/session.m'); # initiate session tracking
+$custom_display = $m->fetch_comp( '/store/shop/custom_cart.html' );
+$cart_label = $m->comp('/store/options.m', option => 'cart_label' ) || 'shopping cart';
+if( $custom_display ) {
+	$custom_display = $custom_display->subcomps();
+} else {
+	$custom_display = {};
+}
+</%init>
+<%perl>
+warn "Shopping bag manager: ARGS is ". Data::Dumper::Dumper( \%ARGS ) if $DEBUG;
+
+$session->{store}{cart}{items} ||= [];
+$cart_items = $session->{store}{cart}{items};
+my $update_items = [];
+
+$shop_url = $m->comp('/store/options.m', option => 'continue_url' );
+$checkout_url = $m->comp('/store/options.m', option => 'checkout_url' );
+$clear_items_url = '/store/shop/index.html?drop_item=all';
+
+for my $field ( keys %ARGS ) {
+	if( $field =~ /^quantity_update_(.*)$/ ) {
+		my $val = $ARGS{ $field };
+		push @$update_items, { fingerprint => $1, quantity => $val};
+	}
+}
+my $show_cart = 1;
+if( $ARGS{'add_sku'} ) {
+	my $i = 0; my $dels = [];
+	$ARGS{add_sku} = [ $ARGS{add_sku} ] unless ref( $ARGS{add_sku} ) eq 'ARRAY';
+
+	warn "Adding some (of ". ( 1+$#{$ARGS{add_sku}} ) .") items that already have a color choice..." if $DEBUG;
+		
+	foreach my $item( @{ $ARGS{add_sku} } ) {
+		next unless $item;
+		# extract and add to the cart any items that only have one color choice available
+	#	my $ch = $m->comp( 'color_choices.m', sku => $item, as_list => 1 );
+	#	my $pending_color_choice = 0;
+	#	if( $#$ch > 0 ) {
+	#
+	#		next;  # disabled packaged-item functionality
+	#		warn "Adding packaged item $item with default color choice" if $DEBUG;
+	#		$pending_color_choice = 1;
+	#	}
+		if( exists $ARGS{"quantity_$item"} && ! $ARGS{"quantity_$item"} ) {
+			warn "    $item (quantity $ARGS{'quantity_$item'}) - skipped $i\n" if $DEBUG > 3;
+			push( @$dels, $i++ );
+			next;
+		}
+		warn "    $item\n" if $DEBUG > 1;
+		$m->comp( '.add_item', 
+			sku => $item, 
+			args => \%ARGS,
+			color => $ARGS{"color_$item"},
+			type => $type, 
+			quantity => $ARGS{"quantity_$item"} || $quantity,
+			DEBUG => $DEBUG, 
+		);
+		my $index = $m->comp('.find_item', DEBUG => $DEBUG, sku => $item, color => $ARGS{"color_$item"}, args => \%ARGS );
+		warn "index: $index" if $DEBUG > 1;
+		push @$dels, $i if defined $index;
+		$i++;
+	}
+	# since these items were added, drop them from the list of stuff left to add.
+	foreach( reverse sort { $a <=> $b } @$dels ) { #numeric sort
+		splice @{ $ARGS{add_sku} }, $_, 1;
+ 	}
+
+
+	my $items = $ARGS{add_sku};
+	# if they somehow didn't make enough color choices, 
+	# they may have gotten some things completely into their cart, 
+	# but any remaining ones still may need to be handled.
+	if( $#$items > -1 ) {
+		$show_cart = 0;
+		# display a form for selecting colors
+</%perl>
+		<p class="ColorWarning">  
+<img src="/store/shop/yield.gif" height="30" width="30" border="0" alt="Selection Required: ">
+
+      <% $#$items ? "The" : "The" %> 
+			      following item<% $#$items ? "s" : "" %> 
+			    require<% $#$items ? "" : "s" %> 
+			      more <% $#$items ? "details" : "information" %> before 
+			    adding <% $#$items ? "them" : "it" %> to your <% $cart_label %>:</p>
+
+			<table>
+			<form method=post action="/store/shop/index.html">
+%		map {
+%			my $q = exists $ARGS{"quantity_$_"} ? $ARGS{"quantity_$_"} : $quantity;
+				<input type=hidden name=add_sku value="<% $_ %>">
+				<input type=hidden name=quantity_<% $_ %> value="<% $q || $quantity || 1 %>">
+%		} @$items;
+			<tr>
+				<th align="left">Description</th>
+				<th align="left">Option<% $#$items ? "s" : "" %></th>
+			</tr>
+%		warn "Items needing color choices: ". Data::Dumper::Dumper( $items ) if $DEBUG > 1;
+%		foreach my $item( map { $m->comp('fetch_item.m', sku => $_ ) } @$items ) {
+			<tr>
+				<td><% $item->{short_description} %></td>
+				<td><& color_choices.m, item => $item &></td>
+			</tr>
+%		}
+<tr><td colspan=3>
+	<br><p>Once you're satisfied with the option<% $#$items ? "s" : "" %>,&nbsp;<input type=submit value="add the item<% $#$items ? "s" : "" %> to your <% $cart_label %>."></p>
+</td></tr>
+</form>       
+</table>
+%	} else { $show_cart = 1; }
+%	$m->comp('/session.m', save => 1 );
+%	return unless $show_cart;
+% }
+%
+% if( $ARGS{'drop_item'} ) {
+%	if( $ARGS{'drop_item'} eq 'all' ) {
+%		@$cart_items = ();
+<& .msg, msg => 'Removed all items.' &>
+%	} else {
+%		my $index = $m->comp('.find_item', DEBUG => $DEBUG, fingerprint => $ARGS{'drop_item'}, args => \%ARGS );
+%		if( defined $index ) {
+%			$msg_item = splice @$cart_items, $index, 1;
+%			$m->comp( '.removed' );
+%		}
+%	}
+% } 
+%	$m->comp('/session.m', save => 1 );
+
+<%def .removed>
+%				if( my $on_del = $custom_display->{cart_on_delete} ) {
+%					$m->comp( $on_del, cart_item => $msg_item, item => $m->comp('fetch_item.m', sku => $msg_item->{sku} ) );
+%				} else {
+<& .msg, msg => 'Removed %d.' &>
+%				}
+</%def>
+
+% unless( $#$cart_items > -1 ) {
+	<SPAN class="FormError">There are currently no items in your <% $cart_label %>.</SPAN>
+	
+	<& .continue &>
+% } else {
+%	my $i = $session->{store}{cart}{items};
+%	for my $incoming (@$update_items ) {
+%		my $index = $m->comp( '.find_item', DEBUG => $DEBUG, items => $i, %$incoming );
+%		my $it = $i->[ $index ];
+%		next unless defined $index;
+%		if( $it->{quantity} != $incoming->{quantity} && ( 0 + $incoming->{quantity} ) ) {
+% 			$it->{quantity} = $incoming->{quantity};
+%			$msg_item = $it;
+			<& .msg, msg => 'Updated %d' &>
+%		} elsif( $it->{quantity} == $incoming->{quantity} ) {
+%			# no change, no harm, no foul.
+%		} elsif( $incoming->{quantity} == 0 ) {
+%			$msg_item = splice @$i, $index, 1;
+% 			$m->comp( '.removed' );
+%		}
+%	}
+%	if( $#$update_items > -1 ) {
+		<& .continue &>
+% 	}
+%	$m->comp('/store/catalog/offers/apply.m');
+%	
+%	warn "later, cart items: ". Data::Dumper::DumperX( $i ) if $DEBUG > 1;
+%	$m->comp("/session.m", save => 1 );
+%
+%	$catalog_index = [ $m->comp( 'fetch_item.m', sku => [ map { $_->{sku} } @$i ] ) ];
+%	$catalog_index = { map { $_->{sku} => $_ } @$catalog_index };
+%
+%	my( $subtotal, $tax_subtotal );
+%	my $user_tax = $session->{'store'}->{'user_tax_rate'} || 0;
+%
+%
+% 	my @list = ();
+% 	foreach my $item( @$cart_items ) {
+%		# build the list of non-packaged, non-disabled items
+%		if ( $catalog_index->{$item->{sku}}{active} ) {
+%			push @list, $item;
+%		} else {
+%			$m->comp('.msg', 
+%				type => 'error', 
+%				msg => 
+%	"Item $item->{sku} ($catalog_index->{$item->{sku}}{short_description}) has ".
+%	" been disabled or has gone out of stock.  You can ". 
+%	'<A href="/store/shop/index.html?drop_item='. 
+%		$m->comp('.fingerprint', item => $catalog_index->{$item->{sku}}, cart_item => $item ).
+%	'">remove it</A>, or leave it in your cart in case it comes back in stock.'
+%			);
+%		}
+%	}
+% if( $ARGS{next} =~ /shop/i ) {
+%	my @t = ( ( $shop_url =~ /^http/ ? 'url' : 'uri' ), $shop_url );
+%	$m->comp('/redir.m', @t );
+%	return;
+% } elsif( $ARGS{next} =~ /checkout/i ) {
+%	my @t = ( ( $checkout_url =~ /^http/ ? 'url' : 'uri' ), $checkout_url );
+%	$m->comp('/redir.m', @t );
+%	return;
+% } elsif( $ARGS{next} =~ /clear/i ) {
+%	my @t = ( ( $clear_items_url =~ /^http/ ? 'url' : 'uri' ), $clear_items_url );
+%	$m->comp('/redir.m', @t );
+%	return;
+% } 
+% 	if( my $t = $custom_display->{'cart_before_form'} ) {
+%		my $result = $m->comp( $t );
+%		if( defined $result && ! $result ) {
+%			return;
+%		}
+%	}
+<form action="/store/shop/index.html" name="cart" method="post">
+%	if( my $t = $custom_display->{'cart_top_of_form'} ) {
+%		$m->comp( $t );
+%	}
+<TABLE BORDER="0" ALIGN="center" CELLPADDING="3" CELLSPACING="0" CLASS="cart_content_text">
+<TBODY>
+% 	if( my $t = $custom_display->{'cart_table_header'} ) {
+%		$m->comp( $t );
+% 	} else {
+	<TR class="cart_content_header">
+		<TH>Shopping Cart Items</TH>
+		<TH ALIGN="right">Each</TH>
+		<TH ALIGN="center">Qty</TH>
+		<TH ALIGN="right">Price</TH>
+		<TH COLSPAN="1">&nbsp;</TH>
+		<TH COLSPAN="1">&nbsp;</TH>
+	</TR>
+% 	}
+<TR><TD COLSPAN="6" height="1"><SPAN STYLE="font-size: 1px;">&nbsp;</SPAN></TD></TR>
+<!---------------------------------------------------------------------->
+
+<%def cart_item_name>
+<%args>
+$item
+</%args>
+% my $u = $m->comp( '/store/options.m', option => 'product_detail_url' );
+% $u &&= "$u?sku=$item->{sku}";
+% my $ch = $m->comp( 'color_choices.m', item => $catalog_index->{$item->{sku} }, as_list => 1 );
+% $msg_item = $item;
+<A href="<% $catalog_index->{$item->{sku}}{product_uri} || $u %>"><& .desc, item => $item &></a>\
+%
+</%def>
+<%def cart_item_row>
+<%args>
+$cart_item
+$item
+$price
+$fingerprint
+</%args>
+<TR>
+	<TD align=left>\
+% {
+%	my $s = $m->scomp( 'cart_item_name', item => $cart_item );
+%	if( my $t = $custom_display->{'cart_item_name'} ) {
+<& $t, cart_item => $cart_item, item => $item, preformatted => $s &>\
+%	} else {
+<% $s %>\
+%	}
+% }
+</td>
+	<TD align=right>$<% round_currency( $price ) %></TD>
+	<TD><CENTER><INPUT style="TEXT-ALIGN: right" size=3 value="<% $cart_item->{quantity} %>" name="quantity_update_<% $fingerprint %>" MAXLENGTH="3"></CENTER></TD>
+	<TD align=right>$<% round_currency( $price * $cart_item->{quantity} ) %></TD>
+% {
+%	my( $attrs, $drop_text );
+%	my $s = $m->scomp( 'cart_item_drop_attrs' );
+%	if( my $t = $custom_display->{'cart_item_drop_attrs'} ) {
+%		$attrs = $m->scomp( $t, cart_item => $item, item => $catalog_index->{ $item->{sku} }, preformatted => $s );
+%	} else { 
+%		$attrs = $s;
+%	}
+%	if( my $t = $custom_display->{'cart_item_drop_text'} ) {
+%		$drop_text = $m->scomp( $t, cart_item => $item, item => $catalog_index->{ $item->{sku} } ); 
+%	} else {
+%		$drop_text = "Drop&nbsp;Item";
+%	}
+	<TD><A href="/store/shop/index.html?drop_item=<% $m->comp('.fingerprint', item => $item, cart_item => $cart_item ) %>"<% $attrs ? " $attrs" : "" %>><% $drop_text %></A></TD>
+% }
+</TR>
+% if( $cart_item->{extra_description} ) {
+<tr><td colspan=4><% $cart_item->{extra_description} |h %></td></tr>
+% }
+</%def>
+<%def cart_item_drop_attrs>\
+%
+onClick="return confirm('Are you sure you want to drop this item from your <% $cart_label %>?')"\
+%
+</%def>
+%	my $this_package = '';
+%	warn "Cart, arranged for display, is: ". Data::Dumper::DumperX( \@list ) if $DEBUG > 1;
+%	for my $item ( @list ) {
+%		my $sku = $item->{sku};
+%		my $item_quantity = $item->{quantity}; 
+%		my $price = $catalog_index->{ $sku }{price} - $item->{discount} + $item->{upcharge};
+%		$subtotal = $subtotal + ( $price * $item_quantity );
+%		$tax_subtotal = $tax_subtotal + ( $price * $item_quantity ) if $catalog_index->{$sku}{taxable};
+
+<!-- BEGIN ITEM -->
+% { 
+%	my $fp = $m->comp( '.fingerprint', 
+%		item => $catalog_index->{$item->{sku}},
+%		cart_item => $item
+%	);
+%	my $s = $m->scomp('cart_item_row', 
+%		cart_item => $item, 
+%		item => $catalog_index->{$item->{sku}}, 
+%		price => $price,
+%		fingerprint => $fp,
+%	);
+%	if( my $tt = $custom_display->{'cart_item_row'} ) {
+<& $tt, price => $price, item => $catalog_index->{ $item->{sku} }, cart_item => $item, preformatted => $s &>\
+%	} else {
+<% $s %>\
+%	}
+% }
+<!-- END ITEM -->
+
+%	}
+
+<!---------------------------------------------------------------------->
+%	$subtotal = round_currency( $subtotal - $session->{store}{discount_pretax} );
+%	$tax_subtotal = round_currency( $tax_subtotal - $session->{store}{discount_pretax} );
+% 	my $tax = round_currency( $tax_subtotal * $user_tax );
+<TR><TD COLSPAN="6" height="1"><SPAN STYLE="font-size: 1px;">&nbsp;</SPAN></TD></TR>
+<TR><TD COLSPAN="1">&nbsp;</TD><TD COLSPAN="3"><HR></TD><TD COLSPAN="2">&nbsp;</TD></TR>
+% if( $session->{store}{discount_pretax} + 0 ) {
+	<tr><td>&nbsp;</td><td align=right colspan=2>DISCOUNT</td>
+			<td align=right>&lt;<% $session->{store}{discount_pretax} %>&gt;</td>
+					<td colspan=2>&nbsp;</td></tr>
+% }
+<TR>
+<TD align=left colSpan=1>
+%# callback for extra stuff here?
+</TD>
+<TD align=right colSpan=2>SUBTOTAL</TD>
+<TD align=right colSpan=1>$<% $subtotal %></TD>
+<TD COLSPAN="2">&nbsp;</TD></TR>
+<TR class="cart_footer_text">
+% 	if( $tax > 0 ) {
+<TD align=right colSpan=3>TAX</TD>
+<TD align=right colSpan=1 class="cart_footer_amount">$<% $tax %></TD>
+<TD COLSPAN="2">&nbsp;</TD></TR>
+<TR>
+<TD align=right colSpan=3>TOTAL</TD>
+<TD align=right colSpan=1 class="cart_footer_total">$<% round_currency( $tax_subtotal + $tax ) %></TD>
+<TD COLSPAN="2">&nbsp;</TD>
+% 	} else {
+%		unless( $m->comp('/store/options.m', option => 'no_shipping' ) || $session->{tax_exempt} ) {
+<TD align=right colspan=4>(Plus Sales Tax if shipping to CA)</td>
+<TD COLSPAN="2">&nbsp;</TD>
+%		}
+% 	}
+</tr>
+<!------------------------------------------------------->
+
+<TR><TD COLSPAN="6">&nbsp;</TD></TR>
+
+
+<TR>
+<TD colspan=6 height=1><SPAN style="FONT-SIZE: 1px">&nbsp;</SPAN></TD></TR>
+<TR><TD colspan=6 align="center">
+<INPUT id=ContinueShop type=submit alt="Continue Shopping" hspace="0" value="Shop" name=next>&nbsp;
+<INPUT id=UpdateItems type=submit alt="Update Quantities" hspace="0" value="Update Qty">&nbsp;
+<INPUT id=ClearItems type=submit alt="Clear Items" hspace="0" value="Clear Items" name=next onClick="return confirm('Are you sure you want to drop all items from your <% $cart_label %>?')">&nbsp;
+<INPUT id=Checkout type=submit alt="Checkout" hspace="0" value="Checkout" name=next>
+</TD></TR>
+
+</TBODY>
+</TABLE>
+</form>
+% if( my $t = $custom_display->{'cart_after_form'} ) {;
+%	$m->comp( $t );
+% }
+
+% }
+
+<%perl>
+sub round_currency {
+  my $exp = shift;
+  my $amount = sprintf( "%.2f", $exp );
+  return $amount;
+}
+
+</%perl>
+
+<%def .desc>
+<%args>
+$item
+</%args>
+% my $desc = $item->{short_description};
+% my $cat_item;
+% unless( $desc ) {
+%	$cat_item = $catalog_index->{$item->{sku}} || $m->comp( 'fetch_item.m', sku => $item->{sku} );
+%	$desc = $cat_item->{short_description};
+% }
+% my $color = $item->{color};
+% my $dsc = $m->scomp('.default_description', description => $desc, color => $color );
+% if( my $d = $custom_display->{cart_item_description} ) {
+<& $d, cart_item => $item, item => $cat_item, preformatted => $dsc &>\
+% } else {
+<% $dsc %>
+% }
+</%def>
+
+<%def .default_description>
+<%args>
+$description
+$color
+</%args>
+<% $description |h %><% ( $color && $color !~ /^none$/i ) ? "&nbsp;($color)" : "" %>\
+%
+</%def>
+<%def .fingerprint>
+<%args>
+$item
+$cart_item
+</%args>
+<%init>
+my $custom_args = [ sort @{ $m->comp('/store/options.m', option => 'shop_custom_fields_global' ) } ];
+my $fingerprint = join " - ", map { $cart_item->{$_} }  qw(sku color),@$custom_args;
+$fingerprint = substr( sha1_hex( $fingerprint ), 1, 5 );
+return $fingerprint;
+</%init>
+</%def>
+
+<%def .find_item>
+<%args>
+$sku => undef
+$color => undef
+$args => {}
+$fingerprint => undef
+$DEBUG => 0
+</%args>
+<%init>
+my $index = 0;
+
+my $custom_args = [ sort @{ $m->comp('/store/options.m', option => 'shop_custom_fields_global' ) } ];
+warn "Custom fields: ". join( " - ", @$custom_args ) 
+	if $#$custom_args > -1 && $DEBUG;
+
+unless( $fingerprint ) {
+	# die "sku and color are required" if( ! defined $sku || ! defined $color );
+	$fingerprint = join " - ", $sku, $color, map { $args->{$_} } @$custom_args;
+	warn "finding $fingerprint" if $DEBUG > 1;
+	$fingerprint = substr( sha1_hex( $fingerprint ), 1, 5 );
+} else {
+	warn "finding hash $fingerprint" if $DEBUG > 1;
+}
+
+while( $index <= $#$cart_items ) {
+	my $t = $cart_items->[ $index ];
+	my $this_fingerprint = join " - ", map { $t->{$_} } 'sku', 'color', @$custom_args;
+	warn "    ". $this_fingerprint if $DEBUG > 2;
+	return $index if $fingerprint eq substr( sha1_hex( $this_fingerprint ), 1, 5 );
+	$index++;
+}
+warn "NOT FOUND" if $DEBUG > 1;
+return undef;
+</%init>
+</%def>
+
+
+<%def .add_item>
+<%args>
+$sku
+$color
+$args
+$quantity => 1
+$type => undef
+$DEBUG => 0
+</%args>
+<%perl>
+$quantity ||= 1;
+$sku =~ s/(.*): (.*)/$2/;
+warn "!!! unexpected disparity between type in SKU ( $1\: $sku ) and passed in type $type. Using $1" if $1 && $type;
+$type ||= $1;
+
+my $item   = $m->comp('fetch_item.m', sku => $sku, DEBUG => $DEBUG - 1 ) || 
+( ( $DEBUG && warn( "Not found") ), return undef );
+
+if( ! $item->{active} ) {
+	$m->comp('.msg', type => 'error', msg => "Item $item->{short_description} is disabled or out of stock." );
+	return undef;
+} 
+
+my $upcharge = 0; my $color_done = 0;
+$DEBUG > 2 && warn "fetching color choices: \n";
+my $choices = $m->comp( 'color_choices.m', item => $item, as_list => 1 );
+if( $#$choices > -1 ) {
+	$DEBUG > 2 && warn( $#$choices+1 ." color choices\n" );
+	foreach( @$choices ) {
+		my( $c, $p ) = split ",";
+		$upcharge = 0 + $p, $color_done++ if $c eq $color || $#$choices == 0;
+	}
+ 	unless( $color_done ) {
+		if( $color ) {
+			warn "color choice '$color' not available for sku '$sku'";
+			$m->comp('.msg', type => 'error', msg => "Chosen color '$color' isn't available for $sku" );
+		}
+ 		return undef;
+ 	}
+} elsif( $color ) {
+	warn "item $sku doesn't have any color choices; $color doesn't apply!";
+}
+
+my $replacing = 0;
+my $color_change = 0;
+my $index  = $m->comp('.find_item', sku => $sku, color => $color, args => $args );
+my $cart_entry;
+my $item_custom_fields = []; # !!! allow the use of custom fields per item?
+if( ! defined $index ) {
+	undef $type;
+	push @$cart_items, $cart_entry = { 
+		sku => $sku, 
+		color => $color, 
+		type => $type,
+		upcharge => $upcharge,
+		map { 
+			$_ => $args->{$_}
+		} @{ $m->comp('/store/options.m', option => 'shop_custom_fields_global' ) },
+		@$item_custom_fields
+	};
+
+	$catalog_index->{ $sku } = $item;
+
+	warn "added cart entry: ". Data::Dumper::Dumper( $cart_entry ) if $DEBUG > 2;
+	$index = $#$cart_items;
+}
+$cart_items->[ $index ]{quantity} ||= 0;
+$cart_items->[ $index ]{quantity} += $quantity;
+</%perl>
+% if( ! $color_change ) {
+% 	my $t = $m->scomp( "cart_on_add", quantity => $quantity, item => $cart_items->[ $index ], color => $color );
+%	if( my $on_add = $custom_display->{cart_on_add} ) {
+%		$m->comp( $on_add, item => $item, color => $color, quantity => $quantity );
+%	} else {
+<% $t %>\
+%	}
+% }
+% return $item;
+</%def>
+
+<%def cart_on_add>
+<%args>
+$quantity
+$item
+$color
+</%args>
+% $msg_item = $item;
+<& .msg, msg => "Added $quantity %d" &>
+</%def>
+
+<%def .msg>
+<%args>
+$type => 'update'
+$msg
+</%args>
+% $msg =~ s/%d/$m->scomp( '.desc', item => $msg_item)/eg;
+<p class="cart_<% $type %>_message"><% $msg %></p>
+</%def>
+
+<%def .continue>
+<p><a href="<% $shop_url %>" class="cart_update_message">[&nbsp;Continue&nbsp;Shopping&nbsp;]</a></p>
+</%def>
+
+<%def CONTENT_TITLE>
+Shopping Cart
+</%def>
+
+<%def MENU_STATE>
+<& /store/menu_state.html, %ARGS, menu_status => 'cart', spacer => '35' &>
+</%def>
+
+<%def MENU_TYPE>
+<& /top.html, flyoutmenu => 'active', prodsearch => 'active' &>
+</%def>
+
+<%def HEADER>
+<meta http-equiv="Content-Style-Type" content="text/css">
+
+</%def>
+
+<%def .insecure_ok>
+OK
+</%def>
+
+
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

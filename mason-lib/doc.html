@@ -1,0 +1,117 @@
+<%args>
+$module
+</%args>
+<style type=text/css>
+<!--
+	code, tt {
+		font-weight: bolder;
+	}
+	pre {
+		margin-left: .4in;
+		padding: .1in;
+		color: 000099;
+		background: white;
+		border-color:#000;
+		border-style:groove;
+		border-width: 2px;
+	}
+
+//-->
+</style>
+% my $mod; my $doc;
+% if( ( $mod = $m->fetch_comp( $module ) ) && $mod->{methods}{ '.doc' } ) {
+	<h1>Documentation</h1>
+
+	Up to: <a href="/docs.html">all modules with available docs</a>
+	<h2>Component Path: <% $mod->title %></h2>
+	<h2>Synopsis</h2>
+%	if( $mod->{methods}{'.doc_synopsis'} ) {
+%		$mod->call_method('.doc_synopsis');
+%	} else {
+		<p>None defined (see <& .my_doc &>)</P>
+%	}
+%	$mod->call_method('.doc');
+% } else {
+%# 	$r->status( 404 );
+	<h1>Not Found</h1>
+	No such component or documentation not found.
+
+	If you want to develop documentation for such a module, see 
+	<& .my_doc &>
+% }
+<%def .my_doc><a href="/doc.html?module=/doc.html">my documentation</a></%def>
+
+<%method .doc_synopsis>
+<p>The doc.html module displays documentation for any 
+component in the tree, if it has a '.doc' method 
+defined.</p>
+</%method>
+
+<%method .doc>
+<h2>Usage</h2>
+<p>To use doc.html, call it with a URI such as: </p>
+
+<pre>
+/doc.html?module=/session.m
+</pre>
+
+<p>The documentation for the given module is displayed, if it exists.  If 
+it does not exist, or if the given module path does not exist, a not-found 
+message is displayed instead.</p>
+
+<h2>Documenting Your Modules</h2>
+
+<p>To create documentation for your own modules, just add a '.doc' 
+method to your module:</p>
+
+<pre>
+<% <<EOD
+<%\method .doc>
+<h2>Usage</h2>
+<p>Call the foobar component with the settings you 
+wish for the following parameters...</p>
+...
+</%\method>
+EOD
+|h %>
+</pre>
+
+<p>You must also define a .doc_synopsis method to be used in a
+<a href="/docs.html">summary list of modules</a>.  If you do not
+do this, you can link directly to the documentation as described
+in Usage, above, but the module will not appear in the modules 
+list.</p>
+
+<p>The .doc_synopsis is simply a short piece of text or HTML to
+describe the module's purpose.</p>
+
+<p>You may also define a .doc_title method to be used in the module 
+list.  If you do this, your module's title will be prepended to 
+the description and displayed in bold.  This allows you to determine
+whether your module will stand out next to the other modules in the 
+list, or whether it should be overlooked as less important.</p>
+
+<p>NOTE: <tt>.doc_title</tt> is the correct form for specifying this 
+setting, however, older modules may currently use .title instead;
+this is supported strictly for backward compatibility.
+
+</%method>
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

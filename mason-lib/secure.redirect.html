@@ -1,0 +1,270 @@
+<%method .title>
+Force Use of HTTPS
+</%method>
+<%method .doc_synopsis>
+Ensures that the the browser is using a secure URL, redirecting the user to a 
+secure URL if HTTPS is not already active.
+</%method>
+<%method .doc>
+
+<h2>Usage</h2>
+<p>Near the top of your protected document (or autohandler, for a directory), add the following code:</p>
+<pre><% <<EOD
+\% return unless \$m->comp('/secure.redirect.html');
+EOD
+ . "" |h %>
+</pre>
+
+<p>To force a page to be served non-secure (switch back from https to http),
+use the insecure => 1 option:
+
+<pre><% <<EOD
+\% return unless \$m->comp('/secure.redirect.html', insecure => 1 );
+EOD
+ . "" |h %>
+</pre>
+
+<p>You may also, at your option, define an error message such as:</p>
+
+<pre>
+<% <<EOD
+<\%\def no_ssl_message>
+<h1>Secure Access Required</h1>
+<p>This page requires a secure connection.</p>
+</%\def>
+EOD
+|h %></pre>
+
+<p>However, this is not recommended, as we provide a default message describing
+the details of the circumstances under which the error message is typically
+displayed.</p>
+
+<p>You may omit the display of any error messages (even in the case of failure)
+with an empty no_ssl_message definition:</p>
+
+<pre>
+<% <<EOD
+<%\def no_ssl_message>
+</\%def>
+EOD
+|h %>
+</pre>
+
+<h2>Notes</h2>
+<p>You should not use this module to redirect a submitted form whose data you want 
+secured - the information would be transmitted in the clear, then retransmitted 
+on the secured channel.  You can use an https:// url as the action for your form, 
+or you can display the form itself in a page secured using this module.  The latter
+provides the advantage of showing the user the security icon while they're filling
+out the form, which is why we recommend this approach. </p>
+
+<p>You should not use this module when you're receiving POST data, as the POSTed 
+data will be lost as a result of the redirect.  It is acceptable to use this module 
+when accepting data from a GET request (&lt;form method=get&gt;), with the caveat 
+above (don't submit sensitive data to an http:// url).</p>
+</%method>
+<%init>
+use Apache;
+use Apache::Constants ':response';
+if( $insecure ) {
+	return 1 unless https();
+} else {
+	return 1 if https();
+}
+</%init>
+% my $header = sub {
+%   if( my $header = $m->callers(1)->subcomps('header') ) {
+%	#...by the caller, if applicable
+	<& $header &>
+%   } else {
+%	#...or with a default body tag, otherwise.
+<body>
+%   }
+% };
+%
+%
+% unless( $url ) {
+%	if( CGI::request_method() eq 'POST' ) {
+%		&$header();
+	<h1>Developer error</h1>
+	<p>The usage of this page requires redirection to a secure URL. 
+	However, an HTML form was used to arrive at this page, and it
+	used the POST method.  This may represent a procedural or planning
+	error on the part of the developer, and it's unlikely to be correct.
+	</p>
+
+	<p>If you are an end user accessing this page on our web site, we
+	apologize that this condition has arisen.  May we suggest that
+	you re-try your request? Do so by clicking in the URL: or Location:
+	field of your browser, then pressing Enter.  </p>
+
+	<h2>More information for Developers:</h2>
+	<p>By serving your HTML form on a page already secured with the
+	secure.redirect component, or by specifying an action which is an
+	https URL, the information entered by the user will
+	be more safe and secure.</p>
+
+	<p>If there is in fact information you need passed through an insecure
+	request by a form, we recommend using METHOD=GET in your HTML 
+	&lt;form&gt; tag.  That information will automatically be passed
+	to the secure version of the target page.
+	</p>
+
+% 	}
+%	$url = CGI::url( -path_info => 1 );
+%		warn "CGI::url is $url; content-type is ".$r->content_type;
+%	if( $insecure ) {
+%		$url =~ s/^https:/http:/;
+%	} else {
+%		$url =~ s/^http:/https:/;
+%	}
+%	$url =~ s|/$|| unless $r->content_type eq 'directory' || $r->notes()->{'is_directory'};
+%	$url =~ s|$|/| if $r->content_type eq 'directory' && ! $url =~ m|/$|;
+%	$url =~ s|//|/|g;
+%	if( $insecure ) {
+%		$url =~ s|http:/|http://|;
+%	} else {
+%		$url =~ s|https:/|https://|;
+%	}
+%	warn "checking for query string";
+%	{ my $query = CGI::query_string(); 
+%		$url .= "?". $query if $query;
+%		warn "url is now $url";
+%	}
+% } else {
+%	warn "using URL passed by caller";
+% }
+%	warn "(redirecting to url $url)";
+
+% unless( my $caller = $m->callers(1) ) {
+	<& .failed, 'url' => $url &>
+% 	return;
+% } else {
+% $r->header_out( 'Location', $url );
+% $r->status(MOVED);
+<html>
+<head>
+%# <meta http-equiv="refresh" content="0;url=<% $url %>">
+</head>
+% # output a body tag so this "error" page appears in the style wished...
+% &$header();
+
+<a href="#show_message"></a>
+<a name="show_message"></a>
+% 	if( my $error = $m->callers(1)->subcomps('no_ssl_message') ) {
+	<& $error &>
+% 	} else {
+<h1>SSL Required</h1>
+<p>Redirecting to our <a href="<% $url %>">secure site</a></a>...</p>
+<p>If the page will not display, <a href="/secure.redirect.html?url=<% $url %>">click here</a> for
+more information.</p>
+
+% 	} # end standard/custom message
+</body>
+</html>
+% $m->flush_buffer();
+<script language="Javascript">
+<!-- hide
+	setTimeout( "window.location.replace('<% $url %>')", 100 );
+// end hiding -->
+</script>
+% $m->flush_buffer();
+% } # end direct/mc_comp'd access
+% return 1;
+
+<%def .failed>
+<%args>
+$url
+</%args>
+<p>Redirecting to our <a href="<% $url %>">secure site</a></a>...failed.</p>
+
+<p>Our apologies.  For some reason, your browser did not connect to our
+secure site.  There are a number of possible reasons that this occured. 
+Please use the following explanations to help find your way to our secured
+area.  Thank you.
+</p>
+
+<h2>Possibility 1: Certificate not signed by a trusted authority</h2>
+
+<p>If our certificate is not signed by a trusted
+authority, your browser may have displayed a warning dialog.  What this
+warning means is:</p>
+<ul>
+	<li>Your connection to us is encrypted from prying eyes.
+	<li>No third party ("Certification Authority") has validated our 
+	identity
+</ul>
+
+<p>We can provide you private information we don't want to be public
+knowledge.</p>
+
+<p>We don't recommend providing personal information on this site.</p>
+
+<h2>Possibility 2: Browser doesn't support SSL</h2>
+
+<p>If your browser doesn't support SSL, you can't view the content you've
+requested.</p>
+
+<h2>Possibility 3: Expired Certificate Authority</h2>
+
+<p>If you use a browser older than Netscape version 4.06 (released August
+1998), or Microsft Internet Explorer 4.5 or older for the Macintosh, then
+entering our secure server environment will result in a Certificate
+warning.</p>
+
+<p>This prompt will inform you that "One of the Certificate Authorities that
+identifies this site has expired. This may be because a certificate
+authority has actually expired, or because the date on your computer is
+wrong."</p>
+
+<p>You will then be asked if you want to continue or cancel the transaction.
+Please be assured that you can continue with your purchase – your
+transaction will be secure.
+</p>
+
+<p>The prompt is simply a result of using an older browser. It is not related
+to any Y2K bugs, nor is it a problem with the Chapters.ca site. It merely
+means that a built-in expiry date in your browser has passed.
+</p>
+
+<p>Certificates, which guarantee your credit card transactions are encrypted
+and secure, are issued for finite time periods within a browser. The
+security is still effective, but its warranty has expired. This system
+ensures that browsers are continuously updated with the latest technology.
+</p>
+
+<p>To avoid this message, PC users can download a newer version of either
+Netscape or Microsoft Internet Explorer. An updated version of Internet
+Explorer for the Macintosh will be available shortly. Both browsers are free
+to use.</p>
+</%def>
+
+<%once>
+use CGI qw(:ssl url);
+</%once>
+
+<%args>
+$url => undef
+$insecure => undef
+</%args>
+
+
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

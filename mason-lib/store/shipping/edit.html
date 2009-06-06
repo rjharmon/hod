@@ -1,0 +1,136 @@
+<%once>
+use Hod::DB;
+</%once>
+<%init>
+$m->comp( '/record.m', %ARGS );
+</%init>
+<%def .allow_delete>
+% return 0;
+</%def>
+<%def .allow_edit>
+% $m->comp('/session.m');
+% if( $session->{site_admin} || 
+%	$session->{store_admin} || 
+%	$session->{fulfill_complete_pending} 
+% ) {
+%	return 1;
+% }
+</%def>
+<%def .form>
+<%args>
+$item
+$action
+</%args>
+
+<h1><% ucfirst lc $action %>ing Shipment <% $item->{id} %> for Order <% $item->{order_number} %></h1>
+<table>
+<form method=post action="edit.html">
+% $item->{current_balance} ||= 0;
+% my $ref = $ARGS{referer} || $r->header_in('Referer');
+		<input type=hidden name=referer value="<% $ref %>">
+	<input type=hidden name=id value="<% $item->{id} %>">
+
+<tr>
+	<td align=right>Status:</td>
+		<td>
+%	if( $session->{site_admin} || $session->{store_admin} ) {
+			<field name="status">
+% 	} else {
+			<b><% $item->{status} %></b>
+% 	}
+		</td>
+</tr>
+
+<tr valign=top>
+	<td align=right >Ship From:</td>
+	<td width="30%">
+		<& addr, item => $item, which => 'from' &>
+	</td>
+	<td align=right valign=top>Ship To:</td>
+	<td width="30%">
+		<& addr, item => $item, which => 'to' &>
+	</td>
+</tr>
+
+<tr valign=baseline><td>Tracking Number:</td><td colspan=3><field name=tracking_number size=30><br>
+<span style="font-size:85%">Enter the tracking number as soon as the package is ready for shipment.</span>
+</td></tr>
+
+
+<tr valign=baseline><td>Packing List:</td>
+	<td colspan=3>!!!
+	</td>
+</tr>
+
+
+<tr valign=baseline><td>Package History:</td>
+	<td colspan=3><pre style="padding:3px;border:2px solid black"><% $item->{history} |h %>
+---- End of History ----</pre>
+	</td>
+</tr>
+
+
+<tr><td>&nbsp;</td><td><input type=submit name=done value="Done"></td></tr>
+	<input type=hidden name=action value="<% $action %>">
+</form>
+</table>
+</%def>
+
+<%def addr>
+<%args>
+$item
+$which
+</%args>
+% my $w = $which;
+% my $i = $item;
+<% $i->{"${w}_name"} %><br>
+
+% if( $i->{"${w}_company"} ) {
+<% $i->{"${w}_company"} %><br>
+% }
+
+<% $i->{"${w}_addr1"} %><br>
+
+% if( $i->{"${w}_addr2"} ) {
+	<% $i->{"${w}_addr2"} %><br>
+% }
+
+<% $i->{"${w}_city"} %>, <% $i->{"${w}_state"} %> <% $i->{"${w}_zip"} %><br>
+
+% if( $i->{"${w}_country"} ) {
+<% $i->{"${w}_country"} %><br>
+% }
+
+<% $i->{"${w}_email"} %><br>
+
+<% $i->{"${w}_phone"} %><br>
+
+</%def>
+
+
+<%def .record_def>
+<%init>
+return( $m->comp( 'definition.m' ) );
+</%init>
+</%def>
+
+
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

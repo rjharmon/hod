@@ -1,0 +1,134 @@
+<%once>
+use Hod::DB;
+</%once>
+<%shared>
+my $show_tr = "table-row";
+my $ua = $r->header_in('User-Agent');
+if( $ua =~ /MSIE/ ) {
+        $show_tr = "block";
+}
+</%shared>
+<%method title>
+Vendor Record
+</%method>
+<%init>
+$m->comp( '/record.m', %ARGS, DEBUG => 1 );
+</%init>
+<%def .allow_edit>
+<%args>
+$item
+</%args>
+% $m->comp('/session.m');
+% my $is_admin = $session->{site_admin} || $session->{store_admin};
+% return 0 unless $is_admin;
+% if( ( $ARGS{done} || $item->{done} ) && $item->{default_vendor} eq 'x' ) {
+%	$dbh->do("UPDATE order_vendor set default_vendor='' where id <> ?", {}, $item->{id} ) ||
+%	warn $dbh->errstr;
+% } else {
+%	warn "done ? $ARGS{done}; item: ". Data::Dumper::Dumper( $item ) ;
+% }
+% return 1;
+</%def>
+<%def .allow_add>
+% return $m->comp('.allow_edit', %ARGS );
+</%def>
+<%def .form>
+<%args>
+$item
+$action
+</%args>
+
+<h1><% ucfirst lc $action %>ing Vendor</h1>
+<table>
+<form method=post action="edit.html">
+% $item->{current_balance} ||= 0;
+% my $ref = $ARGS{referer} || $r->header_in('Referer');
+		<input type=hidden name=referer value="<% $ref %>">
+	<input type=hidden name=id value="<% $item->{id} %>">
+<tr>
+	<th align=right>Vendor Name:</td>
+		<td><field name="name" size=50></td>
+</tr>
+
+<tr><th></th><td>
+<& /xbrowser.m &>
+<script language=Javascript>
+<!--
+function default_vendor_click(cb) {
+	if( cb.checked ) {
+		if( confirm('You may only have one default vendor for the website.  Any other default will be removed.  OK?') ) {
+			getEl('TaxBoxes').style.display = '<% $show_tr %>';
+			return true;
+		} else {
+			getEl('TaxBoxes').style.display='none';
+			return false;
+		}
+	} else {
+		getEl('TaxBoxes').style.display='none';
+	}
+}
+//-->
+</script>
+	<field name="default_vendor" label="Default vendor for this website" onClick="return default_vendor_click(this)">
+</td></tr>
+
+<tr id="TaxBoxes" style="display:<% $item->{default_vendor} ? $show_tr : "none" %>">
+
+<td>&nbsp;</td>
+
+<td>
+<& /labeled_group.m, label => "Sales Tax Settings" &>
+<table>
+	<tr><td valign=baseline align=right>	State:</td><td> <field name=tax_state></td></tr>
+	<tr><td valign=baseline align=right>County:</td><td> <field name=tax_county></td></tr>
+	<tr><td valign=baseline align=right>Local Tax Rate:</td><td> <field name=tax_rate_local><br>
+		<span class=tiny>Applied to sales in the above county.  Ex: for 7.25% tax, enter 0.0725 </span></td></tr>
+	<tr><td valign=baseline align=right>State Tax Rate:</td><td><field name=tax_rate_state><br>
+		<span class=tiny>Applied to other sales in the state above. Ex: for 8.25% tax, enter 0.0825</span></td></tr>
+	<tr><td></td><td><br><field name="global_merchant_account" label="Use global Merchant Account"></td></tr>
+</table>
+<& /labeled_group.m, end => 1 &><br>
+</td></tr>
+
+<tr>
+	<th align=right>Address:</td>
+		<td><field name="addr1" size=50></td>
+</tr>
+	<th>&nbsp;</td><td>
+		<field name="addr2" size=50></td>
+</tr>
+
+<tr>
+	<th align=right>City, State:</td>
+		<td><field name="city" size=19>, <field name="state" size=3> <b>Zip:</b> <field name="zip" size=10></td>
+</tr>
+
+<tr><td colspan=2>&nbsp;</td></tr>
+<tr>
+	<th align=right>Country:</td>
+		<td><field name="country" size=50></td>
+</tr>
+
+<tr><td colspan=2>&nbsp;</td></tr>
+<tr>
+	<th align=right>Email:</td>
+		<td><field name="email" size=21>
+		<b>Phone:</b> <field name="phone" size=15></td>
+</tr>
+
+
+
+%#  !!!
+
+<tr><td>&nbsp;</td><td><input type=submit name=done value="Done"></td></tr>
+	<input type=hidden name=action value="<% $action %>">
+</form>
+</table>
+</%def>
+
+<%def .record_def>
+<%init>
+return( $m->comp( 'definition.m' ) );
+</%init>
+</%def>
+

@@ -1,0 +1,122 @@
+<%flags>
+inherit => undef
+</%flags>
+<%init>
+my $DEBUG = 0;
+use GD::Graph::bars;
+use HTTP::Date qw();
+
+unless( $m->comp('/session/is_admin.m', area => 'Store Order Viewing',
+	role => [ 'site_admin', 'orders_admin', 'orders_view_pricing' ],
+	silent => 1
+) ) {
+	return 403;
+}
+
+my $pager_options = $m->comp( 'index.html', %ARGS, 'opts' => 1 );
+my $where = $m->comp('/db_pager.m', args => \%ARGS, %$pager_options, mode => 'where_clause' );
+my $graph = GD::Graph::bars->new(400,300);
+$graph->set(
+	y_label => 'Sales (Subtotal)',
+	x_labels_vertical => 1,
+);
+$graph->set_x_axis_font('/fonts/tahoma.ttf', 8);
+$graph->set_x_label_font('/fonts/tahoma.ttf', 14);
+$graph->set_y_axis_font('/fonts/tahoma.ttf', 8);
+$graph->set_y_label_font('/fonts/tahoma.ttf',14);
+$graph->set_legend_font('/fonts/tahoma.ttf', 8);
+my $data = [];
+
+$graph->set( x_label => "Month" );
+$graph->set( cumulate => 1 );
+$graph->set( x_label_angle => 3.14159/3 );
+
+my $months = $m->comp('/db_single_column.m', query => <<EOQ );
+SELECT distinct CONCAT( MONTHNAME(purchase_date), " ", YEAR(purchase_date) ) AS mo 
+  FROM orders
+ WHERE $where
+GROUP BY mo
+ORDER BY EXTRACT(YEAR_MONTH from purchase_date)
+EOQ
+
+my $agents = $m->comp('/db_single_column.m', query => <<EOQ );
+SELECT distinct salesperson
+  FROM orders
+ WHERE ( $where ) AND salesperson <> ''
+
+EOQ
+
+if( $#$agents > -1 ) {
+	$graph->set_legend( @$agents );
+} else {
+	$agents = undef;
+}
+
+my $image;
+foreach my $agent ( @{ $agents || [undef] } ) {
+	my $sp = "salesperson = '$agent'";
+	$sp = "salesperson is null" unless defined $agent;
+
+	my $query = "SELECT ".
+	join( 
+		",\n", map {
+			my $t = $_; $t =~ s/\s/_/;
+			qq{sum( if( CONCAT( MONTHNAME(purchase_date), " ", YEAR(purchase_date) ) = '$_', subtotal, 0 ) )
+	AS $t}
+		} @$months
+	). <<EOQ;
+  FROM orders
+ WHERE $sp AND ( $where )
+EOQ
+	my $sth = $dbh->prepare( $query );
+
+	unless( $sth->execute( ) ) {
+		$image = new GD::Image(400,200);
+		my $white = $image->colorAllocate(255,255,255);
+		my $black = $image->colorAllocate(0,0,0);
+		my @bounds = $image->stringFT(
+			$black, 
+			"/fonts/tahomabd.ttf", "12", #points 
+			0,  #radians of rotation
+			20,20, 
+			"No sales match these settings"
+		); 
+	};# || die $dbh->errstr;
+	my @t = $sth->fetchrow_array();
+	my $res = \@t;
+	push @$data, $res;
+	$m->out("<pre>". $query . "\n". Data::Dumper::Dumper( $res )."</pre>" ) if $DEBUG;
+	$m->flush_buffer();
+}
+$image ||= $graph->plot([$months,@$data] ) or die( $graph->error() );
+$image = $image->png();
+
+$r->header_out("Content-Type" => 'image/png');
+# $r->header_out('Content-Length', length $image );
+$r->header_out('Expires',
+	HTTP::Date::time2str(time + 1*24*60*60));
+$r->header_out('Cache-Control', "max-age=" . 1*24*60*60);
+$r->send_http_header();
+	
+ $m->out( $image );
+</%init>
+
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

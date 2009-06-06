@@ -1,0 +1,66 @@
+% return if $m->base_comp->subcomps('.no_signin');
+<& /help.m &>
+<div style="background-color:black;font-size:10px;color:#ffff99;border: 1px solid black">
+<center><b>\
+% my $validate = $m->comp('/session/validate.m', optional => 1 );
+% if( $validate ) {
+Change Options:\
+% } else {
+<a style="color:#ffff99" href="/session/register.html">Sign in/Register:</a>\
+% }
+</b></center>
+
+	<form method=get style="margin:1px;padding:2px;padding-top:6px;padding-bottom:6px;color:black;background-color:#ffff99" action="/session/register.html">
+		<p style="margin-top:0;margin-bottom:2px;font-size:10px">
+% if( $validate ) {
+			Log in as another user:
+% } else {
+			Existing user? Sign in. 
+			<& /help.m, text => eval { $m->scomp('/session/options.m:.help') } || undef &><br>
+			New user?  Register here:
+% }
+		</p>
+		<table style="margin:0" align=center cellpadding=1 cellspacing=0><tr valign=baseline>
+			<TD style="font-size:9px;color:black;background-color:#ffff99" align=right>email: </TD>
+			<td style="color:black;background-color:#ffff99"><input type=text name=email onFocus="this.select()" value="<% $session->{email} |h %>" size=18 style="font-size:9px"></td>
+		</tr><tr align=baseline>
+			<td style="font-size:9px;background-color:#ffff99;color:black">Password: </td>
+			<td style="background-color:#ffff99;color:black"><nobr><input type=password name=vcode size=10 style="font-size:9px">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<input type=submit value="Go" style="font-size:9px"></nobr></td>
+		</tr>
+		<tr valign=top><td style="color:black;background-color:#ffff99"></td><td style="font-size:9px;background-color:#ffff99;color:black;">(optional)</td></tr>
+		</table>
+
+%#<tr><td align=right colspan=2 style="font-size:9px">
+
+% if( $session->{email} ) {
+		<a href="/session/edit.html">Settings</a> |
+		<a href="/session/register.html?rem=0">Logout</a>
+% } 
+% if( $session->{site_admin} ) {
+		| <a href="/session/list.html">Admin</a>
+% }
+</form>
+</div>
+% if( $dev ) {
+%# id: <% $session->{_id} %>
+% }
+
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

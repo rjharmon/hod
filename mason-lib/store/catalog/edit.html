@@ -1,0 +1,633 @@
+<%method .doc_synopsis>
+Record editing page for the store catalog - see the
+<a href="/doc.html?module=/store/catalog/index.html">Store Catalog Manager</a>
+</%method>
+<%once>
+use Image::Size;
+use Date::Manip;
+use MIME::Lite;
+</%once>
+<%shared>
+my $referer = $r->header_in("Referer") || "list.html?SubCat=All+Categories&SearchType=All+Items";
+my $is_admin = $m->comp('/session/is_admin.m', area => 'Store Catalog Manager - Edit Items', 
+	role => [ 'site_admin', 'store_admin' ],
+	silent => 1
+);
+my $can_edit_field = sub {
+	return 1 if $is_admin;
+	my $it = shift;
+	my $t = $session->{"catalog_edit_$it"};
+	warn "Can ". ( $t ? "" : "NOT " ). "edit $it\n";
+	return $t;
+};
+my $colors = $m->comp("/theme.m:current_colors");
+</%shared>
+<%init>
+$ARGS{sku} = $ARGS{new_sku} if $ARGS{action} eq 'add' && $ARGS{new_sku};
+$ARGS{action} = 'add' unless $ARGS{sku};
+if( $ARGS{category} eq 'Add Category' && ( $is_admin || $can_edit_field->('misc') ) ) {
+	$ARGS{category} = $ARGS{new_category} 
+}
+if( $ARGS{sub_category} eq 'Add Sub-Category' && ( $is_admin || $can_edit_field->('misc') ) ) {
+	$ARGS{sub_category} = $ARGS{new_sub_category};
+}
+$m->comp( '/record.m', %ARGS, DEBUG => 2 );
+</%init>
+<%def .allow_edit>
+<%args>
+$item
+$orig_item
+</%args>
+<%init>
+# don't do extra checking, if they haven't clicked Save.
+return 1 if $is_admin && ! $ARGS{done};
+
+if( $m->comp('/session/is_admin.m', area => 'Store Catalog Manager - Edit Items', 
+	role => [ 'site_admin', 'store_admin', 'catalog_edit_items' ],
+	silent => 1
+) ) {
+	# if they have permission to edit, that's fine.
+	# don't do extra checking, if they haven't clicked Save.
+	return 1 unless $ARGS{done};
+} else {
+	# even if they don't have permission to edit, they can edit the
+	# item, if they are allowed to Add items.
+	return 0 unless $session->{catalog_add_items};
+	return 0 unless $orig_item->{pending_review};
+	$item->{pending_review} = 'x'; # don't let them clear this checkbox
+	return 0 unless $ARGS{done};
+}
+my $new = { $orig_item };
+my $notification_needed = 0;
+my $log_line = "";
+my $email = "";
+my $dt = UnixDate("today","%b %e, %Y  %T");
+my $check_update = sub {
+	my $fields = shift; $fields = [ $fields ] unless ref( $fields ) eq 'ARRAY';
+	my $permission = shift;
+	my $log = shift;
+	my $skip_notify = shift;
+	if( $can_edit_field->($permission) ) {
+		foreach( @$fields ) {
+			$item->{$_} = '' if $item->{$_} eq ' ';
+			if( $orig_item->{$_} ne $item->{$_} ) {
+				$new->{$_} = $item->{$_};
+				$notification_needed = 1 unless $skip_notify;
+
+				$log_line ||= "$dt - $session->{email}\n";
+				if( $log eq 'log_values' ) {
+					my $t = "$_ changed from '$orig_item->{$_}' to '$item->{$_}'";
+					$log_line .= "\t$t\n";
+					$email .= "$t<br>\n\n";
+				} else {
+					my $t = "$_ updated";
+					$log_line .= "\t$t\n";
+					my $opts = {};
+					$opts->{format} = 'lines' if $log =~ /lines/;
+					$email .= $t;
+					$email .= '; Original Value:<div style="margin-left:0.5in;padding:5px;border:1px solid black">'.
+						Hod::Field::Textbox->html_display(undef,$orig_item->{$_}, undef, $opts ). "</div>\n";
+					$email .= 'New Value:  <div style="margin-left:0.5in;padding:5px;border:1px solid black">'.
+						Hod::Field::Textbox->html_display(undef,$item->{$_}, undef, $opts). "</div>\n";
+				}
+			}
+		}
+	}
+};
+$check_update->( 'color', 'color', 'log_change_lines' );
+$check_update->( 'price', 'retail', 'log_values' );
+$check_update->( 'wholesale', 'wholesale', 'log_values' );
+$check_update->( 'handling_fee', 'handling', 'log_values' );
+$check_update->( [ qw(active hot_item taxable weight category sub_category) ], 'misc', 'log_values', 'skip-notify' );
+$check_update->( [ qw(short_description long_description) ], 'description', 'log_changes' );
+
+if( $is_admin && $item->{active} ) {
+	$new->{pending_review} = '';
+}
+
+map { $item->{$_} = $new->{$_} } keys %$new;
+
+my $style = <<EOS;
+<HTML><HEAD>
+<style>
+	{ font-family: Tahoma, Verdana, Helvetica, Arial, sans-serif;
+		font-size:12px;
+	}
+	p, body { font-family: Tahoma, Verdana, Helvetica, Arial, sans-serif;
+		font-size:12px;
+	}
+</style></HEAD><body>
+EOS
+
+if( $log_line ) {
+	$item->{change_log} = $orig_item->{change_log} . $log_line. "\n";
+}
+if( ( $ARGS{done} =~ /submit/i ) && ! $is_admin ) {
+	my $e = MIME::Lite->new(
+		From => $session->{email},
+		To => $r->server_admin,
+		Subject => "Please Review: $orig_item->{short_description}",
+		Type => 'text/html',
+		Data => <<EOD,
+$style
+<p>This item has been submitted for posting to the live server:</p>
+
+<p><a href="$server_name/store/catalog/edit.html?sku=$item->{sku}">$item->{short_description}</a></p>
+
+<p>Please review and enable the item as requested. 
+
+@{[ ( $ARGS{reviewer_comments} ) ? ('<b>Special Note</b>: <div style="border:2px solid red;padding:5px">'.
+	Hod::Field::Textbox->html_display(undef,$ARGS{reviewer_comments}). '</div>' ): "" ]}
+
+<p>Most recent changes:</p>
+<div style="border:2px solid black;padding:5px;">$email</div>
+EOD
+	);
+	$e->send();
+} elsif( $email && ! $new->{pending_review} && ! $is_admin ) {
+	my $e = MIME::Lite->new(
+		From => $session->{email},
+		To => $r->server_admin,
+		Subject => "Updated Item: $orig_item->{short_description}",
+		Type => 'text/html',
+		Data => <<EOD
+$style
+<p>This item has been updated:</p>
+
+<P><a href="$server_name/store/catalog/edit.html?sku=$item->{sku}">$item->{short_description}</a></p>
+
+<p>Changes are detailed below.</p>
+<div style="border:2px solid black;padding:5px;">$email</div>
+EOD
+	);
+	$e->send();
+}
+return 1;
+</%init>
+</%def>
+<%def .allow_add>
+<%args>
+$item => undef
+</%args>
+% return 1 if $is_admin;
+% return 0 unless $session->{catalog_add_items};
+% # return 1 if ! $item->{done} && $session->{catalog_add_items};
+% $item->{active} = '';
+% $item->{pending_review} = 'x';
+% if( $ARGS{done} =~ /submit/i ) {
+<& email_new, %ARGS &>
+% }
+% return 1;
+</%def>
+<%def .allow_delete>
+% return 0;
+</%def>
+<%method title><% ucfirst lc ( $ARGS{action} || 'edit' ) %>ing Item - <& PARENT:title &></%method>
+<%def .error_message>
+<%args>
+$message
+</%args>
+<span class=FormError><% $message %><br>
+</%def>
+
+<SCRIPT LANGUAGE=JavaScript type="text/javascript">
+<!--
+
+function validate(formObj) {
+   Cprice = formObj.price.value;
+   Cweight = formObj.weight.value;
+   if (emptyField(formObj.new_sku))
+      alert("Please enter a SKU Code");
+   else if (emptyField(formObj.short_description))
+      alert("Please enter a Short Description");
+   else if (emptyField(formObj.long_description))
+      alert("Please enter a Long Description");
+   else if (!NumCheck(Cprice)) 
+      alert("Please enter a valid Price");
+ //  else if (!NumCheck(Cweight)) 
+ //     alert("Please enter a valid Weight");
+   else return true;
+   
+   return false;
+}
+
+function emptyField(textObj)
+{
+
+if (textObj.value.length == 0) return true;
+for (var i=0; i<textObj.value.length; ++i) {
+     var ch = textObj.value.charAt(i);
+     if (ch != ' ' && ch != '\t') return false;
+     }
+     return true;
+}
+
+function NumCheck(aString) {
+   var aChar = null
+   var status = true
+   if(aString.length < 1) {
+	status = false
+   } else {
+        for(var i = 0; i < aString.length; i++) {
+	      aChar = aString.charAt(i)
+              if (aChar == "." )
+              		continue
+              else 
+
+              if (parseInt(aChar,10) >= 0 && parseInt(aChar,10) <= 9 )
+              		continue
+              else {
+              		status = false
+              		break
+              	   }
+        }
+    }
+    return(status)
+}
+
+//-->
+</script>
+
+<SCRIPT LANGUAGE=JavaScript type="text/javascript">
+<!--
+// Author: JS-Examples - http://www.js-examples.com
+// _w : which ID (1) or (2)
+// _h : (h)ide or (s)how
+function toggleT(_w,_h) {
+if (document.all) { // is IE
+if (_h=='s') eval("document.all."+_w+".style.visibility='visible';");
+if (_h=='h') eval("document.all."+_w+".style.visibility='hidden';");
+} else { // is NS? 
+if (_h=='s') eval("document.layers['"+_w+"'].visibility='show';");
+if (_h=='h') eval("document.layers['"+_w+"'].visibility='hide';");
+}
+}
+//-->
+</script>
+
+
+<%def .form>
+<%args>
+$item
+$action
+</%args>
+
+% if( $action eq 'add' ) {
+%	$can_edit_field = sub { 1 };
+% }
+<form name=itemsedit enctype="multipart/form-data" method=post id=form action="edit.html" onsubmit="return validate(document.form);">
+<table border=0  CELLSPACING="7" CELLPADDING="0" COLS="8"><tr>
+<td COLSPAN="4">
+<nobr>
+	<input type=hidden name=referer value="<% $referer %>">
+
+% if( $is_admin || $can_edit_field->('misc' ) ) {
+	<field name="category" id="Category" class="ItemText" style="WIDTH: 170px" onChange="if( this.selectedIndex == this.length - 1 ) { this.form.new_category.focus() }"><&
+.help, text =>
+	'Select the appropriate Category for the item you wish to add. <br><br>To '.
+	'create a new Category, '.
+	'choose &quot;Create New Category&quot; from the drop down '.
+	'menu and enter the name of the new category. The new category name '.
+	'will become available in the drop down list for next time.'
+&> 
+New...<INPUT maxLength="25" size="25" name="new_category" value="<% $ARGS{'new_category'} %>" class="ItemText"><& 
+.help, text => 
+	'Type in the name of the new Category to create.' 
+&>
+% } else {
+Category: <b><% $item->{category} |h %></b>
+% }
+</nobr>
+
+</td>
+<td colspan=4 rowspan=2>
+<nobr>
+% if( $is_admin ) { 
+<field name=active style="WIDTH: 16px; HEIGHT: 16px" label="Enable Item"><& 
+.help, text =>
+	'Removing the check mark from this box will prevent this inventory item from appearing in the online store.'
+&><br>
+<field name=pending_review style="WIDTH: 16px; HEIGHT: 16px" label="Pending Review">
+% } else {
+Item is <b><% $item->{active} ? "" : "NOT " %> Active</b>
+% }
+</nobr><br>
+
+<nobr>
+% if( $is_admin || $can_edit_field->('misc' )  ) {
+<field name="hot_item" style="WIDTH: 16px; HEIGHT: 16px" label="Hot Item"><& 
+.help, text =>
+	'Setting the check mark in this box will cause this item to be highlighted on the front page of the online store.'
+&>
+<br>
+% } else {
+<% $item->{hot_item} ? '<img src="/i/small-succeeded.gif" border=0> Hot Item' : ""%>
+% }
+</nobr>
+<nobr>
+% if( $is_admin ) {
+<field name="offline" style="WIDTH: 16px; HEIGHT: 16px" label="Offline Only"><help name=offline>
+% } else {
+<% $item->{offline} ? '<img src="/i/small-succeeded.gif" border=0> Offline' : ""%>
+% }
+</nobr>
+</td>
+</tr><tr><td COLSPAN="4">
+
+% if( $is_admin || $can_edit_field->('misc' ) ) {
+	<field name=sub_category class="ItemText" style="WIDTH: 170px" onChange="if( this.selectedIndex == this.length - 1 ) { this.form.new_sub_category.focus() }"><& 
+.help, text =>
+	'Select the appropriate Subcategory for the item you wish to add. <br><br>To '.
+	'create a new Subcategory, '.
+	'choose &quot;Create Subcategory&quot; from the drop down '.
+	'menu and enter the name of the new category. The new category name '.
+	'will become available in the drop down list for next time.'
+&>
+
+New...<INPUT maxLength="25" size="25" name="new_sub_category" value="<% $item->{'new_sub_category'} %>" class="ItemText"><&
+.help, text => 
+	'Type in the name of the new sub-category to create.'
+&>
+% } else {
+Sub-Category: <b><% $item->{sub_category} |h %></b>
+% }
+</td>
+
+
+</tr><tr><td COLSPAN="4">
+SKU Code:
+      <INPUT type="hidden" name="sku" value="<% $item->{'sku'} %>">
+      <INPUT <% $action ne 'add' ? "disabled " : "" %>maxLength="20" size="15" name="new_sku" value="<% $item->{'sku'} %>" class="ItemText"><& 
+.help, text =>
+	'An item\'s SKU number can\'t be modified because it would '.
+	'cause problems with records of previous orders of the item.'
+&>
+% if( $is_admin || $session->{catalog_allowed_vendor} eq 0 ) {
+	Vendor: <field name=vendor>
+% } elsif ( $session->{catalog_allowed_vendor} ) {
+%	# !!! fetch vendor
+	Vendor: <b>!!! display name here</b>
+% }
+
+</td><td COLSPAN="4" rowspan=3>
+Colors/Sizes:
+% if( $is_admin || $can_edit_field->('color') ) {
+<& 
+.help, text =>
+	'Enter the color choices for this item, one per line.  <br><br>You '.
+	'may also include a pricing differential for each color '.
+	'choice by adding a comma, an optional +/- and the upcharge '.
+	'(/discount) for that color.'
+&><br>
+<field name="color" wrap="none" id="color" rows="8" cols="30" class="ItemText"></p>
+% } else {
+<b><% Hod::Field::Textbox->html_display(undef,
+	$item->{color}, undef, 
+	{ html => 0, format => 'lines' }) 
+%></b>
+% }
+
+</td></tr><tr><td COLSPAN="4">
+% if( $is_admin || $can_edit_field->('description' ) ) {
+Short Descr:
+      <field name="short_description" maxLength="35" size="40" id="short_description" class="ItemText"><&
+.help, text =>
+	'Enter a short description of the item for display in the catalog.'
+&>
+% } else {
+Short Descr: <b><% $item->{short_description} |h %></b>
+% }
+
+</td></tr><tr><td COLSPAN="4">
+Detailed Description:
+% if( $is_admin || $can_edit_field->('description' ) ) {
+<&
+.help, text =>
+	'Enter an in-depth description of the item.  This description '.
+	'is displayed on the product\'s detail page.'
+&>
+<BR>
+   	<field name="long_description" WRAP="virtual" id="longdes" rows="5" cols="60" class="ItemText"><P>
+% } else {
+<div style="background:<% $colors->{alt_background} %>;padding:4px;border:2px solid <% $colors->{border} %>">
+
+<% Hod::Field::Textbox->html_display(undef, $item->{long_description} ) %>
+</div>
+% }
+</td></tr><tr><td COLSPAN="6">
+<P><nobr>
+Price: $&nbsp;
+% if( $is_admin || $can_edit_field->('retail') ) {
+<field name="price" maxLength="8" size="7" id="price" class="ItemText"><&
+.help, text =>
+	'Enter the price you want your customers to pay for this item.'
+&>
+% } else {
+<b><% $item->{price} %></b>
+% }
+
+% if( $is_admin || $can_edit_field->('misc') ) {
+	<field name=taxable class="ItemText" style="WIDTH: 16px; HEIGHT: 16px" label="Taxable"><&
+.help, text =>        
+	'Check this option if you collect tax when selling this item.  '.
+	'Removing the check mark makes this item tax exempt.'
+&> 
+% } else {
+<% $item->{taxable} ? '<img src="/i/small-succeeded.gif" border=0>' : "<b>NOT</b>" %> Taxable
+% }
+
+Weight: 
+% if( $is_admin || $can_edit_field->('misc') ) {
+    <field name="weight" maxLength="5" size="5" class="ItemText">lbs.
+<& .help, text => 
+	'Enter the weight of the item in decimal format.  For example, '.
+	'10.75 pounds represents an item that weighs 10&nbsp;3/4 pounds. <br><br> '.
+	'Note: The shipping system will '.
+	'calculate a 1 pound minimum in any order.  For example, if a '.
+	'person purchased 20 items and total weight came to 0.2 pounds, a '.
+	'1 pound minimum would apply.'
+&>
+% } else {
+<b><% $item->{weight} %> lbs</b>
+% }
+Handling Fee: $&nbsp;\
+% if( $is_admin || $can_edit_field->('handling') ) {
+	<field name="handling_fee" maxlength=8 size=7>
+<& .help, text =>
+	'Enter the extra handling fee to include with this item for '.
+	'shipping and handling.  '
+&>
+% } else {
+<b><% $item->{handling_fee} %></b>
+% }
+
+</nobr>
+</td><td colspan=4 rowspan=3 valign=top>
+</td></tr>
+% my $small_pic = $item->{'small_pic'} ? '/repository/small/' . $item->{'small_pic'} : '/i/NO_PIC_SML.gif';
+% my $large_pic = $item->{'large_pic'} ? '/repository/large/' . $item->{'large_pic'} : '/i/NO_PIC_LRG.gif';
+% my( $small_x, $small_y, $large_x, $large_y );
+% my( $real_small_x, $real_small_y, $real_large_x, $real_large_y );
+% if( my $small_size = $item->{'small_pic_size'} ) {
+%  ( $small_x, $small_y ) = split( 'x', $small_size );
+%  ( $real_small_x, $real_small_y ) = split( 'x', $small_size );
+% } else {
+%  ( $small_x, $small_y ) = ( 30, 30 );
+% }
+% if( my $large_size = $item->{'large_pic_size'} ) {
+%  ( $large_x, $large_y ) = split( 'x', $large_size );
+%  ( $real_large_x, $real_large_y ) = split( 'x', $large_size );
+% } else {
+%  ( $large_x, $large_y ) = ( 40, 40 );
+% }
+% $small_x = 30 if $small_x > 30;
+% $small_y = 30 if $small_y > 30;
+% $large_x = 40 if $large_x > 40;
+% $large_y = 40 if $large_y > 40;
+% my $mouseover = mc_comp( '.help', attrs_only => 1, 
+% 	text => 'Click the thumbnail to see an expanded view' );
+
+<tr valign=bottom>
+<td align=left colspan=2><A <% $mouseover %> target="newwindow" onClick="var t=window.open('<% 
+	$small_pic
+%>', 'SMALLPIC', 'menubar=no,toolbar=no,resizable=no,width=<% 
+ 	$real_small_x + 15 
+%>,height=<% $real_small_y + 15 %>'); t.focus();return false" HREF="<% 
+ 	$small_pic 
+%>"><img src="<% $small_pic %>" border=0 alt="" VSPACE=0 HSPACE="15" width="<% 
+	$small_x
+%>" height="<% $small_y %>"></a>
+</td>
+<td align=center valign=bottom colspan=2>
+<A target="newwindow" <% $mouseover %> onClick="var t=window.open('<% $large_pic %>', 'LARGEPIC', 'menubar=no,toolbar=no,resizable=no,width=<% $real_large_x + 15 %>,height=<% $real_large_y + 15 %>'); t.focus();return false" HREF="<% $large_pic %>">
+<img src="<% $large_pic %>" border=0 alt="" VSPACE=11 HSPACE="8" ALIGN="top" width="<% $large_x %>" height="<% $large_y %>"></a>
+</td></tr>
+
+% my $max_width_small = $m->comp('/store/options.m', option => 'max_width_small' );
+% my $max_width_large = $m->comp('/store/options.m', option => 'max_width_large' );
+% my $max_height_small = $m->comp('/store/options.m', option => 'max_height_small' );
+% my $max_height_large = $m->comp('/store/options.m', option => 'max_height_large' );
+
+<tr valign=bottom><td COLSPAN="2"><nobr>
+Small Picture\
+% if( $is_admin ) {
+:
+      <field name="small_pic" size=1 class="ItemText"><&
+.help, text =>
+	'Click the &quot;Browse&quot; button to search your local '.
+	'drives for a small picture to be displayed in the online '.
+	"store Catalog.  $max_width_small x $max_height_small (Width x Height) is the maximum ".
+	'allowed dimensions in pixels.  The browser may resize any '.
+	'image larger than this, degrading quality.'
+&>
+% }
+</td><td colspan=2>
+Large Picture\
+% if( $is_admin ) {
+:
+      <field name="large_pic" size=1 class="ItemText"><&
+.help, text =>
+	'Click the &quot;Browse&quot; button to search your local '.
+	'drives for a large picture to be displayed in with the '.
+	"long description.  $max_width_large x $max_height_large (Width x Height) is the maximum ".
+	'allowed dimensions in pixels.  The browser may resize any '.
+	'image larger than this, degrading quality.'
+&>
+% }
+</nobr>
+</td></tr>
+<tr><td colspan=8>
+% if( $is_admin ) {
+Product Detail URI: <field name=product_uri size=50><help name=product_uri><br>
+% }
+% if( my $custom = $m->fetch_comp('/store/catalog/custom_edit.m') ) {
+	<b>Custom Fields:</b>
+	<& $custom, %ARGS, is_admin => $is_admin, canedit => $can_edit_field &>
+% }
+</td></tr>
+<tr><td COLSPAN="1" WIDTH="6%">&nbsp;
+</td><td COLSPAN="1" WIDTH="18%">&nbsp;
+</td><td COLSPAN="1" WIDTH="1%">&nbsp;
+</td><td COLSPAN="1" WIDTH="15%">&nbsp;
+</td><td COLSPAN="1" WIDTH="12%">&nbsp;
+</td><td COLSPAN="1" WIDTH="13%">&nbsp;
+</td><td COLSPAN="1" WIDTH="19%">&nbsp;
+</td><td COLSPAN="1" WIDTH="12%">&nbsp;
+</td></tr>
+</table>
+<div align=center>
+      <INPUT type="hidden" value="<% $action %>" name="action">
+% if( ! $is_admin && ( $item->{pending_review} || $action eq 'add' ) ) {
+<div style="border:2px solid black; padding:5px; margin:5px">
+Note: Please ensure that all details are correct before submitting the item for review. <br>
+You may enter any comments for reviewer below: <br>
+	<textarea name="reviewer_comments" rows=3 cols=50></textarea><br>
+	<input type="submit" value="Save and Submit for Review" name="done">
+</div>
+      <INPUT type="submit" value="Save Only - No Review" name="done">
+% } else {
+      <INPUT type="submit" value="Save Item" name="done">
+% }
+</div>
+</form>
+
+% if( $is_admin ) {
+<h2>Change Log</h2>
+
+<pre><% $item->{change_log} |h %></pre>
+% }
+</%def>
+
+<%method CONTENT_TITLE>
+<% ucfirst $ARGS{action} %> Item
+</%method>
+
+<%method HEADER_MENU><& PARENT:HEADER_MENU, %ARGS &>
+<a href="<% $referer %>" class="QuickTipLink">Return to List</a> |
+&nbsp;&nbsp;<a href="javascript:print()" class="QuickTipLink">Print Page</a>
+</%method>
+
+
+
+<%def .validate>
+<%args>
+$item
+$def
+$opts
+</%args>
+<%init>
+my( $redo, $err );
+my( $x, $y );
+my $size;
+foreach $size( qw(small large) ) {
+	my $pic = $item->{"${size}_pic"} || next;
+	my $repo = $opts->{"${size}_pic"}{repository};
+	# warn "checking $size image size: $repo/$pic";
+	( $x, $y ) = Image::Size::imgsize( "$repo/$pic" );
+	unless( $x && $y ) {
+		$m->comp(".error_message", message => "Not a valid image file ($size): $pic" );
+		unlink $pic;
+		$err = 1;
+	} else {
+		my $s = $x . "x" . $y;
+		if( $s ne $item->{"${size}_pic_size"} ) {
+			$item->{"${size}_pic_size"} = $s;
+			$redo = 1;
+		}
+	}
+}
+return undef if $err;
+return "0E0" if $redo;
+return 1;
+</%init>
+</%def>
+
+<%def .help>
+% return $m->comp( '/help.m', %ARGS );
+</%def>
+
+<%def .record_def>
+<%init>
+return $m->comp( 'definition.m' );
+</%init>
+</%def>

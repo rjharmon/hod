@@ -1,0 +1,59 @@
+<%args>
+$sku
+</%args>
+% my $item = $m->comp('/db_fetch.m', query => "Select * from product where sku=". $dbh->quote( $sku ) );
+% $item = $item->[0];
+% unless( $item ) {
+	<h1>Not Found</h1>
+
+	<p>Product not found.  Please visit <a href="/gallery.html">the gallery</a>.</p>
+% 	$r->status(404);
+% 	return;
+% }
+<FORM action="/store/shop/index.html" method=post>
+<table align="center" border="0" cellpadding="2" cellspacing="3">
+<tr><td>&nbsp;</td><td><div class="MedCaption" align="center"><% $item->{short_description} %>&nbsp;-&nbsp;$<% $item->{price} %></div>
+</td></tr>
+% my( $w, $h ) = $item->{large_pic_size} =~ m|(\d+)x(\d+)|;
+<tr><td valign="top"><img src="/repository/large/<% $item->{large_pic} %>" alt="<% $item->{short_description} %>" width="<% $w %>" height="<% $h %>">
+<div class="MedCaption" align="center">
+Your Price: $<% $item->{price} %>
+</div>
+</td><td valign="top">
+<% $item->{long_description} %>
+<br><br>
+	<INPUT name=add_sku type=hidden value="<% $item->{sku} %>">
+<& /store/shop/color_choices.m, item => $item &>
+
+<br>
+<br>
+<span class="RegCaption">
+Select Quantity:&nbsp;</span><INPUT maxLength=3 name=quantity size=3 value=1> 
+<INPUT type=submit value="Add to Cart">
+
+</td>
+</tr>
+
+</table>
+</form>
+
+<%method .session_no_cookie_required></%method>
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

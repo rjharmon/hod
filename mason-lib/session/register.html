@@ -1,0 +1,890 @@
+<%method .doc_synopsis>
+Allow users to register and/or log in, using their email address and cookies.
+</%method>
+<%method .doc>
+<h2>Usage</h2>
+<p>Use the registration component when you want users to directly click through 
+to register with your web site - simply link your visitor to 
+<code>/session/register.html</code>, or you can perform 
+&quot;optional validation&quot; with 
+<a href="/doc.html?module=/session/validate.m">/session/validate.m</a>, then call
+<code>register.html</code> directly with any desired custom options.</p>
+
+<p><code>register.html</code> is also used indirectly, if you call 
+<a href="/doc.html?module=/session/validate.m">/session/validate.m</a> 
+for requiring authentication for a web page(s). When you do so, the user is 
+automatically prompted to provide their email address.</p>
+
+<h2>Behavior</h2>
+
+<p>Whether you use register.html directly or indirectly, your visitor will go through 
+the <code>register.html</code> process, as described.  In both cases, can affect the
+text that's generated, and on an overall basis, you can affect the colors used for the 
+dialog boxes - or, you can replace the dialog boxes completely.</p>
+
+<p>This module performs the following steps:</p>
+<ul>
+	<li><p><b>Asks the user for their email address</b>, if none was provided.</p>
+
+	<li><p><b>Looks up the provided email address.</b>  The database is searched for 
+	the email address provided. It can be made to require the 
+	address to be found (the <code>need_email_match =&gt; 1</code> option), or the default 
+	behavior will send a registration code directly to the not-found email address.</p>
+
+	<li><p><b>Lets the user switch accounts:</b> If the user enters a different email 
+	address than one that's already validated, it provides them the opportunity to log out
+	and then log in to the other address instead.</p>
+
+	<li><p><b>Requests a confirmation code.</b> Once an email has been sent (either 
+	today, or on a previous occasion), this module will prompt for the user's 
+	password.</p>
+
+	<li><p><b>Manages "public terminal" cookies.</b> A "remember me" checkbox is provided, 
+	allowing a user to be remembered, or to indicate that they should *not* be 
+	remembered, as would be the case if they use a public terminal.  Cookies are 
+	set, accordingly, for short- or long-term use, and will automatically remember 
+	if the user has indicated that the computer is not to remember logins.</p>
+
+	<li><p><b>Sends notification to site admins. </b> When the user confirms their 
+	email address for the first time, an email is sent to the site administrators 
+	informing them of this event and providing the opportunity to edit their session
+	record, grant extra permissions, and so on.</p>
+
+	<li><p><b>Remembers the requested activity. </b>  When the user requests a page that 
+	requires a login, the URL to which they were destined is remembered - when they
+	complete the validation, they are automatically sent on to the activity they 
+	originally requested.</p>
+
+	<li><p><b>It slices, it dices...</b> it even cuts tin cans!</p>
+
+	<li><p><b>No</b>, not <i>really</i>!</p>
+</ul>
+
+<h2>Customizing</h2>
+
+<p>The elements of this module which you can customize are:</p>
+
+<ul>
+	<li><p><b>Require email address match:</b>  By providing the 
+<code>need_email_match =&gt; 1</code> option, you can require that the 
+user enter an email address found in the database (or they can click 
+something else that may be less restrictive).</p>
+
+	<li><p><b>Colors:</b> By providing color settings in 
+	<code>/theme.m</code>, any or all of the default color 
+	settings can be replaced (<a href="/doc.html?module=/theme.m">Documentation
+	for <code>/theme.m</code></a>).  The current color settings are:</p>
+
+<pre><% Data::Dumper->Dump( [ $m->comp('/theme.m:current_colors') ], ['colors'] ) |h %></pre>
+
+	<li><p><b>.on_add behavior:</b> By providing an .on_add subcomponent in 
+	<code>/session/options.m</code>, you can perform extra steps when a user
+	is "added" - meaning, when they confirm their email address for the first
+	time.  If you provide this subcomponent, you are overriding the default
+	handler that sends email to the site administrator.</p>
+
+	<li><p><b>Text elements:</b> There are a wide variety of textual elements
+	for which you can provide replacement text including markup.  To use these
+	text elements, you can create a <code>.session_<i>foo</i>_text</code> 
+	subcomponent either in <code>/session/options.m</code> (to change the default, 
+	site-wide), or in your component which has called 
+	<code>/session/register.html</code> or <code>/session/validate.m</code>, to
+	change the settings for more specific activities.</p>
+
+<pre><% <<EOD
+<\%def .session_foo_text>
+This is the text to use for foo, instead of the default text.
+</\%def>
+EOD
+ |h %></pre>
+
+	<p>See below for default settings.
+	</p>
+
+</ul>
+<h3>Customizable Text Elements</h3>
+
+<p>The following text elements can be customized. The default setting for each
+is shown.
+	<ul>
+% foreach( qw(email_label vcode_label title reason reset just_sent title_found 
+%	found not_found invalid logout_title logout already_logged_in 
+%	confirmed_title confirmed) ) {
+	<& .ct, $_ &>
+% }
+	</ul>
+</%method>
+
+<%def .ct>
+%	local $_ = shift;
+	<li><b>.session_<% $_ |h %>_text: </b>
+% eval {
+	<& ".session_${_}_doc" &>
+% };
+</p>
+	<pre><% $m->scomp(".session_${_}_text", email => "[email address]", vcode => "[vcode]") |h %></pre>
+</%def>
+
+<%args>
+$email => ''
+$vcode => ''
+$opt_remember => ''
+$rem => undef
+$resend => ''
+$attempt => ''
+$need_email_match => 0
+$impersonate => 0
+$DEBUG => 3
+</%args>
+<%shared>
+my %cookies;
+my $ses;
+</%shared>
+<%init>
+warn "---------------------------------" if $DEBUG;
+use MIME::Lite;
+use Digest::SHA1 qw(sha1_base64);
+use CGI qw(url https);
+use CGI::Cookie;
+my $cookies = $r->header_in('Cookie');
+%cookies = CGI::Cookie->parse( $cookies );
+$m->comp('/session.m' ); # fetch session
+
+$r->no_cache(1);  # instruct browser never to cache the results of a page that's gotten to this point of verification
+
+my $url = url( -path_info => 1, -query => 1, -absolute => 1 );
+$url =~ s/\.html\//\.html/;
+
+my $bare_uri = url( -absolute => 1 );
+
+if( $url =~ /register\.html/ || $url =~ m|/v\.h\?| ) {
+	$url = $r->header_in('Referer') || '/';
+	if( $url =~ /register\.html/ || $url =~ m|/v\.h\?| ) {
+		$url = '/';
+	}
+	$url =~ s/http.{2,3}$server_name(.*)/$1/;
+}
+
+unless( $attempt ) {
+	$ARGS{attempt} = $attempt = $session->{session_attempt_url} || $url;
+	$attempt =~ s/^\Q$server_name\E//;
+	$ARGS{attempt} = $attempt;
+#	warn "crazy.  '$server_name' $ARGS{attempt}";
+}
+$session->{session_attempt_url} = $attempt, $m->comp("/session.m", save => 1)
+	unless $session->{session_attempt_url} eq $attempt;
+
+</%init>
+% if( defined $rem && $rem == 0 && ! $opt_remember ) {
+<& .template_top, %ARGS, title => $m->scomp('.custom_text', type => 'logout_title', %ARGS ) &>
+%	# standalone request to logout.
+%	use CGI::Cookie;
+%	my %cookies = CGI::Cookie->parse( $r->header_in('Cookie') );
+%	if( $cookies{impersonate} ) {
+%		$m->comp('.delcookie', name => 'impersonate');
+%	} else {
+%		$m->comp('.delcookie', name => 'session');
+%	}
+	<& .custom_text, type => 'logout', email => $email, %ARGS &>
+	<& .template_bottom &>
+%	return 0;
+% }
+<%perl>
+$email ||= $session->{vcode_email} if $vcode;
+if( $email || $session->{email} ) {
+	if( $email ) {
+		warn "Looking up email $email..." if $DEBUG;;
+		$ses = $m->comp('/db_fetch.m', 
+			query => "select * from session where vcode_email=?",
+			args => $email 
+		) || [];
+		$m->comp('.exception', msg => ( "multiple matches for $email: ". ($#$ses+1) ) ) if $#$ses > 0;
+		$ses = $ses->[0];
+		warn "    ...found session: ". Data::Dumper::Dumper( $ses ) if $ses && $DEBUG;;
+		unless( $ses ) {
+			warn "    ... not found\n" if $DEBUG;
+			if( $email && $session->{email} && $email ne $session->{email} ) {
+				$m->comp('.change_email', old => $session->{email}, new => $email );
+				$m->comp('.template_bottom' );
+				return 1;
+			}
+			
+			if( $vcode && ( $vcode eq $session->{vcode} ) && ! $session->{email} ) {
+				warn "  Oh, that vcode belongs to the current session." if $DEBUG;
+				$ses = $session;
+				$ARGS{email} ||= $email = $session->{vcode_email};
+			}
+		}
+	} elsif( $session->{email} ) {
+		warn "Current session already has $session->{email} authenticated" if $DEBUG;
+		$ses = $session;
+	}
+	if( $ses ) {
+		warn "OK, we've got a session" if $DEBUG;
+		if( $vcode && $vcode eq $ses->{vcode} ) {
+			# remember what they were trying to do (or what they were doing before).<br>
+			warn "Provided vcode $vcode matches" if $DEBUG;
+
+			if( ( $opt_remember || defined $rem ) && ! $rem && ! $cookies{pubterm} ) {
+				$m->comp('.set_pub_cookie');
+			} elsif( $rem && $cookies{pubterm} ) {
+				$m->comp('.delcookie', name =>  'pubterm' );
+			}
+			if( $ses->{vcode} ne $session->{vcode} ) {
+				warn "Switching sessions and moving on to $attempt" if $DEBUG;
+				# we've just authenticated a different session.
+				# restore $session and ensure that /session.m will save it properly.<br>
+				if( ! $ses->{email} ) {
+					$m->comp('/session.m', id => $ses->{id} );
+					$session->{email} = $email;
+
+
+					$session->{site_admin} = 'x' if $email eq $r->server()->server_admin();
+
+					$m->comp('/session.m', id => $ses->{id}, save => 1 );
+
+					my $add_hook = $m->fetch_comp('/session/options.m' );
+					$add_hook &&= $add_hook->subcomps('.on_add');
+					$add_hook ||= $m->fetch_comp('.on_add');
+					$add_hook && $m->comp( $add_hook );
+				}
+				my $s = $m->fetch_comp("/session.m");
+				$m->comp( $s->subcomps('.set_session_cookie'),
+					id => $ses->{id},
+					next_url => $attempt,
+					temp => ( ( ( $opt_remember || defined $rem ) && ! $rem ) ? 1 : 0 ) || $impersonate,
+					( $impersonate ? ( impersonate => 1 ) : () )
+				);
+				return;
+			} else {
+				if( ! $session->{email} ) {
+					$session->{email} = $email;
+					$session->{site_admin} = 'x' if $email eq $r->server()->server_admin();
+					$m->comp('/session.m', save => 1 );
+
+					my $add_hook = $m->fetch_comp('/session/options.m' );
+					$add_hook &&= $add_hook->subcomps('.on_add');
+					$add_hook ||= $m->fetch_comp('.on_add');
+					$add_hook && $m->comp( $add_hook );
+				}
+				if( $attempt ) {
+					$m->comp('/redir.m', url => $attempt );
+					return;
+				}
+			}
+</%perl>
+
+			<& .template_top, %ARGS, title => $m->scomp( ".custom_text", type => 'confirmed_title', %ARGS ) &>
+			<& .custom_text, type => "confirmed", %ARGS, email => $email &>
+			<& .template_bottom, %ARGS &>
+%			return 1;
+%		} elsif( $vcode ) {
+			<& .custom_text, type => 'invalid', %ARGS &>
+			<& .check, %ARGS, email => $email &>
+
+			<& .template_bottom, %ARGS &>
+
+%			return 0;
+%
+% 		} elsif( $opt_remember && ! $rem && ! $cookies{pubterm} ) {
+%			$m->comp('.set_pub_cookie');
+%			if( $cookies{session} && $cookies{session} =~ /refresh/ ) { # non-temporary
+%				$m->comp('.verify_cookies', %ARGS);
+%			}
+%		} elsif( $rem && $session->{email} && $cookies{pubterm} ) {
+%			$m->comp('.delcookie', name => 'pubterm' );
+%		}
+%		if( $resend || ! $ses->{vcode} ) {
+			<& .send, %ARGS, email => $email &>
+%		} else {
+			<& .check, %ARGS, email => $email &>
+%		}
+<& .template_bottom, %ARGS &>
+%		return 0;
+% 	}
+% }
+% #
+% # if we get through to here, we have an email address that's not known - if any.
+
+% if( $email ) {
+%	if( $session->{vcode} && ! $resend && ( $session->{vcode_email} eq $email ) ) {
+	<& .check, %ARGS, email => $email &>
+%	} elsif( $need_email_match ) {
+	<& .ask, %ARGS, email => $email, message => $m->scomp( '.custom_text', type => 'not_found', %ARGS ) &>
+%	} else {
+	<& .send, %ARGS, email => $email &>
+%	}
+% } else {
+<& .ask, %ARGS, email => $email &>
+<%def .ask>
+<%args>
+$email => undef
+$message => $m->scomp( '.custom_text', type => 'reason', %ARGS )
+$need_email_match => 0
+</%args>
+<& .template_top, %ARGS &>
+
+<p><% $message %></p>
+	<form name=verify style="margin:.2in;margin-left:.5in" method=POST action="/session/register.html">
+% if( $need_email_match ) {
+		<input type=hidden name=need_email_match value=1>
+% }
+		<center><nobr><& .custom_text, type => 'email_label', %ARGS &><input type=text size=25 name=email value="<% $email |h %>"> 
+		<input type=submit value="Verify">
+</nobr></center>
+
+	</form>
+</%def>
+% }
+<& .template_bottom, %ARGS &>
+<script language=javascript>
+<!--
+document.forms['verify'].email.focus()
+//-->
+</script>
+<%def .send>
+<%args>
+$email
+$opt_remember => 0
+$rem => undef
+</%args>
+<%init>
+	my $vcode = $m->comp( "make_vcode.m", email => $email );
+	my $browsers_ip = $r->connection->remote_ip();
+
+	warn "sending $vcode to $email" if $dev;
+
+	my $url = "$server_name/v.h?e=".
+		CGI::escape($email). "&v=$vcode";
+	if( ( $opt_remember || defined $rem ) && ! $rem ) {
+		$url .= "&rem=0";
+	}
+
+	my $mail = MIME::Lite->new(
+		From => $r->server->server_admin(),
+		To => $email,
+		Subject => "Validating email address submitted to $server_name",
+		Data => <<EOD );
+Your password is:
+
+   $vcode
+
+This email address ($email) has been submitted on 
+$server_name, from IP address $browsers_ip.  To 
+protect your privacy and ensure accurate communications, we 
+need you to confirm this email address.
+
+To confirm, go to this URL:
+
+$url
+
+...or enter this password into the verification form:
+
+  $vcode
+
+You can use this password at any time to restore your preferences
+on another computer.  This is particularly handy if you use webmail on
+various computers.  
+
+If you lose this email, it's no problem - we'll just change the password 
+and send you the new one.
+
+Thank you.
+
+EOD
+
+	$mail->send();
+</%init>
+% if( $ses->{id} && $session->{_id} ne $ses->{id} ) {
+%	$dbh->do("update session set vcode='$vcode' where id='$ses->{id}'");
+% } else {
+% 	$session->{vcode} = $vcode;
+% 	$session->{vcode_email} = $email;
+% 	$m->comp('/session.m', save => 1 );
+% }
+
+<& .check, %ARGS, email => $email, just_sent => 1 &>
+
+</%def>
+
+<%def .check>
+<%args>
+$email
+$vcode => ''
+$opt_remember => ''
+$rem => undef
+$resend => ''
+$attempt => ''
+$just_sent => 0
+$need_email_match => 0
+$title => $m->scomp(".custom_text", type => 'title', %ARGS )
+</%args>
+<& .template_top, %ARGS, title => $title &>
+<form name=verify action="/session/register.html" method=POST>
+% if( $need_email_match ) {
+	<input type=hidden name=need_email_match value=1>
+% }
+% if( $just_sent ) {
+	<& .custom_text, type => 'just_sent', %ARGS &>
+% } elsif( $session->{email} && ( ( $session->{email} eq $email ) || ! $email ) ) {
+	<& .custom_text, type => 'already_logged_in', %ARGS &>
+%	$email = $session->{email};
+% } else {
+	<& .custom_text, type => 'found', %ARGS &>
+% }
+% my $col = $m->comp('/theme.m:current_colors' );
+<style type="text/css">
+<!--
+td.reg_box_12345, td .reg_box_12345, tr td.reg_box_12345, table tr td.reg_box_12345, table td table tr td.reg_box_12345 { 
+	color:<% $col->{alt_text} %>;
+	background-color:<% $col->{alt_background} %>;
+}
+//-->
+</style>
+<table align=center class="reg_box_12345">
+<tr><td align=right class="reg_box_12345">
+	<& .custom_text, type => 'email_label', %ARGS &></td>
+		<td class="reg_box_12345" valign=bottom><input type=text size=25 name=email value="<% $email |h %>" onFocus="this.select()" tabindex=1></td>
+<td rowspan=2 class="reg_box_12345" valign=baseline>
+<input type=hidden name="attempt" value="<% $attempt |h %>">
+<input type=hidden name="opt_remember" value=1>
+<p style="font-size:9px">
+%# warn "opt_remember: $opt_remember remember: $rem";
+% if( $cookies{pubterm} || ( ( $opt_remember || defined $rem ) && ! $rem ) ) {
+		<input type=checkbox name="rem" id="rem_box_12345" tabindex=3>	
+% } else {
+		<input type=checkbox name="rem" CHECKED id="rem_box_12345" tabindex=3>
+% }
+<label for="rem_box_12345">Remember me<br>
+&nbsp;&nbsp;&nbsp;(on this computer)</label>
+</p>
+</td></tr>
+<tr><td class="reg_box_12345" align=right>
+	<& .custom_text, type => 'vcode_label', %ARGS &></td>
+		<td class="reg_box_12345" valign=top><input type=password name=vcode size=25 tabindex=2>
+</td></tr>
+<tr><td class="reg_box_12345">&nbsp;
+</td><td class="reg_box_12345">
+	<input type=submit value="Confirm" tabindex=4>
+</td></tr>
+</table>
+
+<& .custom_text, type => "reset", %ARGS &>
+	</form>
+<& .template_bottom, %ARGS &>
+<script language="javascript">
+<!--
+	document.forms['verify'].vcode.focus();
+//-->
+</script>
+</%def>
+
+<%def .exception>
+<%args>
+$msg
+</%args>
+<%init>
+my $mail = MIME::Lite->new(
+	From => $r->server->server_admin(),
+	To => $r->server->server_admin(),
+	Subject => "Exception on $server_name",
+	Data => $msg 
+);
+$mail->send();
+return;
+</%init>
+</%def>
+
+
+<%def .template_top>
+<%args>
+$title => $m->scomp('.custom_text', type => 'title', %ARGS )
+</%args>
+% if( my $s = $m->fetch_comp('/session/options.m') ) {
+%	if( $s->subcomps('.session_template_top') ) {
+		<& $s->subcomps( '.session_template_top', %ARGS ) &>
+%		return;
+%	}
+% }	
+% my $col = $m->comp('/theme.m:current_colors' );
+<div style="border:1px solid <% $col->{alt_background} %>;margin:8px">
+	<div style="border:2px solid <% $col->{border} %>;background-color:<% $col->{header} %>">
+		<h1 style="text-align:center;color:<% $col->{box_title_text} %>;font-size:20px;margin:2px"><% $title %></h1>
+		<div style="margin:0; color: <% $col->{alt_text} %>; background-color:<% $col->{alt_background} %>; padding:4px">
+</%def>
+
+<%def .template_bottom>
+% if( my $s = $m->fetch_comp('/session/options.m') ) {
+%	if( $s->subcomps('.session_template_bottom') ) {
+		<& $s->subcomps( '.session_template_bottom', %ARGS ) &>
+%		return;
+%	}
+% }
+</div></div></div>
+
+</%def>
+
+<%def .set_pub_cookie>
+<%init>
+my $cookie = CGI::Cookie->new(
+	-name => 'pubterm',
+	-path => '/',
+	-value => '1',
+	-expires => '+999d'
+);
+$r->cgi_header_out( 'Set-Cookie', $cookie->as_string );			
+</%init>
+</%def>
+
+
+<%def .delcookie>
+<%args>
+$name
+</%args>
+<%init>
+warn "deleting cookie $name" if $dev;
+my $cookie = CGI::Cookie->new(
+	-name => $name,
+	-path => '/',
+	-value => "deleted",
+	-expires => "-365d"
+);
+$r->cgi_header_out( 'Set-Cookie', $cookie->as_string() );
+return;
+</%init>
+</%def>
+
+
+<%method skip_cookie_verify>
+The existence of this method will cause /session.m not to try refreshing cookies, so 
+we can do it manually.
+</%method>
+
+<%def .verify_cookies>
+<%args>
+$rem => 0
+$opt_remember => 0
+</%args>
+my $s = $m->fetch_comp("/session.m");
+$m->comp( $s->subcomps('.verify_cookies'),
+	session => {},
+	remember_me => ( $rem || (! $opt_remember && ! defined $rem ) ? 1 : 0
+);
+</%def>
+
+<%def .change_email>
+<%args>
+$old
+$new
+</%args>
+	<p>If you wish to create a new user account for <b><% $new |h %></b>,  
+		<a href="/session/register.html?rem=0&email=<% $new |h %>">click here</a>.
+
+	<p>To update your email address, please email <& /email_display.m,
+		email => $r->server->server_admin(), 
+		subject => "Changing email address at ". $server_name,
+		body => <<EOD,
+
+Dear Webmaster,
+
+Please change my email address registered at $server_name, from 
+$old to $new
+
+I am sending this mail from my old email address ($old)
+for verification purposes.
+
+Thank you,
+
+EOD
+
+() 	&> (from your old address, if possible) telling us the new email 
+		address.</p>
+</%def>
+
+
+<%def .no_signin>
+The existence of this subcomp prevents the login form 
+from being displayed
+</%def>
+
+<%def .on_add>
+<%init>
+warn "Sending notification email for session $session->{_id}" if $dev;
+my $email = MIME::Lite->new(
+        From => $session->{email},
+        To => $r->server->server_admin(),
+        Subject => 'Authenticated visitor',
+        Data => <<EOD );
+
+Hi,
+
+$session->{email} here.  I've joined at $server_name.
+
+If I should get privileges, you can grant them here:
+
+$server_name/session/edit.html?id=$session->{_id}
+
+EOD
+
+$email->send();
+</%init>
+</%def>
+
+<%def .session_reason_doc>
+Displayed above the email entry form to explain why we're asking for their address.
+</%def>
+<%def .session_reason_text>
+To confirm your identity, please provide your email address and Vcode:
+</%def>
+
+<%def .session_email_label_doc>
+Label used for "Email"; change it if you'd like to adjust for clarity or brevity
+</%def>
+<%def .session_email_label_text>
+Your email address: 
+</%def>
+
+<%def .session_vcode_label_doc>
+Label used for the password field.  Change it if you'd like to use different nomenclature.
+</%def>
+<%def .session_vcode_label_text>
+Password:
+</%def>
+
+<%def .session_title_doc>
+Title used for dialog boxes, unless context dictates the use of a different title
+</%def>
+<%def .session_title_text>
+Email Validation
+</%def>
+
+<%def .session_just_sent_doc>
+Text displayed when we've just sent email with the user's password.
+You may wish to use a %ARGS section:
+<pre><% <<EOD
+<\%ARGS>
+\$email
+</\%ARGS>
+EOD
+ |h %></pre>
+</%def>
+<%def .session_just_sent_text>
+<%args>
+$email
+</%args>
+<p>Thank you.  An email has been sent to <b><% $email |h %></b> with your 
+password.</p>
+
+<p>This email is normally delivered to your server in the moments it takes 
+you to read this page.  If you have not already received the message, 
+feel free to browse away from this page in the meantime; the email 
+contains a clickable link to complete the verification, and we'll
+resume right where we left off.</p>
+</%def>
+
+<%def .session_already_logged_in_doc>
+Specifies the text displayed when the provided email address is already logged in.
+</%def>
+<%def .session_already_logged_in_text>
+<%args>
+$email
+</%args>
+You're already logged in as '<% $session->{email} |h %>'.  To log in as another user, enter the 
+new login information.
+</%def>
+
+<%def .session_title_found_doc>
+Specifies the title used when the user's email address is found in the database.
+</%def>
+<%def .session_title_found_text>
+Email Confirmation
+</%def>
+
+<%def .session_found_doc>
+Text displayed when the user's email address is found in the database.
+You may wish to use a %ARGS section:
+<pre><% <<EOD
+<\%ARGS>
+\$email
+</\%ARGS>
+EOD
+ |h %></pre>
+</%def>
+<%def .session_found_text>
+<%args>
+$email
+</%args>
+<p>Thank you, <b><% $email |h %></b>.  Please enter your password.  If you aren't 
+<b><% $email |h %></b>, please enter your email address and click Confirm.</p>
+</%def>
+
+<%def .session_not_found_doc>
+Text displayed <i>above</i> the dialog box, when the provided email address is not found,
+and when <code>need_email_match =&gt; 1</code> has been specified.
+</%def>
+<%def .session_not_found_text>
+	That email adddress was not found.
+</%def>
+
+<%def .session_invalid_doc>
+Text displayed <i>above</i> the dialog box, when the password has been entered incorrectly.
+</%def>
+<%def .session_invalid_text>
+<font color=red><b>Invalid Authentication</b></font>
+</%def>
+
+<%def .session_logout_title_doc>
+Title used for the dialog page confirming that we've logged the user out
+</%def>
+<%def .session_logout_title_text>
+Logged Out
+</%def>
+
+<%def .session_logout_doc>
+Text used to confirm that we've logged the user out.  The form shown in 
+the second example is displayed if an email address is provided (this can happen
+if the user enters a different email address than the one currently validated - 
+it will give them the chance to log out and then log in again as a different user).
+</p>
+<p>If no email address is included an offer is provided to log in again as the same, or a 
+different, user.
+For a demonstration of the text used in that case,, you can <a href="/session/logout.html">log out</a> right now,
+if you wish.</p><p>
+You may wish to use a %ARGS section:
+<pre><% <<EOD
+<\%ARGS>
+\$email => undef
+</\%ARGS>
+EOD
+ |h %></pre>
+</%def>
+<%def .session_logout_text>
+<%args>
+$email => undef
+</%args>
+<p>Logged out.  
+% 	unless( $email ) {
+	If you wish to log in again, <a href="/session/register.html?email=<% $session->{email} |h %>">click here</a>.  
+
+	Or you can <a href="/session/register.html">log in as a different user</a>.
+	</p>
+% 	} else {
+	<form action="register.html" method=get>
+		<input type=hidden name=email value="<% $email |h %>">
+		Now you can 
+			<input type=submit value="Log in as <% $email |h %>">
+	</form>
+% 	}
+</%def>
+
+<%def .session_confirmed_title_doc>
+Title used when a user has confirmed their email address by correctly entering their password.
+</%def>
+<%def .session_confirmed_title_text>
+Welcome
+</%def>
+
+<%def .session_confirmed_doc>
+Text displayed when a user has confirmed their email address by correctly entering their password.
+</p><p>
+You may wish to use a %ARGS section:
+<pre><% <<EOD
+<\%ARGS>
+\$email => undef
+</\%ARGS>
+EOD
+ |h %></pre>
+</%def>
+<%def .session_confirmed_text>
+<%args>
+$email
+$vcode
+</%args>
+<h3>Thank you, <b><% $email |h %></b></h3>
+
+<p>Welcome!  We'll remember all your settings and preferences.  You 
+can use your password to log in from 
+any computer with a web browser.  Or just click the link in the 
+email we sent.
+</p>
+</%def>
+
+<%def .session_reset_doc>
+<p>Text displayed at the bottom of the form that asks for the verification code.
+It offers to reset and resend the password to the given email address.</p>
+
+%#<p>You may also wish to indicate that resetting the password will revoke
+%#access to this account from all other computers.</p>
+</%def>
+
+<%def .session_reset_text>
+<hr>
+	<p>Misplaced password?  Gave the wrong email address?
+		<input tabindex=5 type=submit name="resend" 
+			value="Reset and re-send"><br>
+%#	<span style="font-size:smaller">(Use this also if other 
+%#		computers have remembered your login and you want to 
+%#		revoke them.)
+%#	</span>
+	</p>
+</%def>
+
+
+<%def .custom_text>
+<%args>
+$type
+</%args>
+% my $i = -1;
+% my $s;
+% do {
+%	if( my $t = $m->callers(++$i) ) {
+%		$s = $t;
+%		# warn(  "$i: ". $s->title );
+%	} else { $s = undef };
+% } while( $s && ( 
+%	$s->title =~ m|^/session/register\.html |  ||  $s->title =~ m|^/session/validate\.m | )  
+% );
+%
+% $s &&= eval { $s->owner } || $s;
+% $s &&= $s->subcomps(".session_${type}_text"); 
+%
+% unless( $s ) {
+%	if( my $t = $ARGS{attempt} || $session->{session_attempt_url} ) {
+%	#	warn "trying to find $type via $t" if $dev;
+%		$s = $m->fetch_comp( $t );
+%		$s &&= $s->subcomps(".session_${type}_text", %ARGS );
+% 	}
+% }
+% unless( $s ) {
+% 	$s = $m->fetch_comp('/session/options.m');  # check for site options
+% 	$s &&= $s->subcomps(".${type}_text", %ARGS );
+% }
+% unless( $s ) {
+%	$s = $m->comp(".session_${type}_text", %ARGS ) || "";
+% } else {
+%	$s = $m->scomp( $s, %ARGS ) if ref( $s );
+% }
+% $m->comp('/session.m', save => 1);
+<% $s %>
+</%def>
+
+
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

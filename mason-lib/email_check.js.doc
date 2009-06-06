@@ -1,0 +1,54 @@
+<%method .doc_synopsis>
+Shared javascript for checking email address validity.
+</%method>
+<%method .doc>
+<h2>Usage</h2>
+
+<p>This JavaScript is used for easy checking of the validity of
+email address formats entered into web forms.</p>
+
+<pre>
+<% <<EOD
+<script language="Javascript" 
+   src="/email_check.js"></script>
+...
+<input type=text onChange="return emailCheck(this.value)">
+-- or --
+<form onSubmit="return emailCheck(this.value)">
+EOD
+|h %>
+</pre>
+
+<p>If any formatting errors are found in the email address, an alert dialog
+is displayed and the function returns false.</p>
+
+<p>Other calling methods than those in the example above may be useful as
+well.  For instance, if you wish to check multiple fields for validity, a
+single onSubmit handler for a form could call the emailCheck() function as
+well as other functions.</p>
+
+<h2>Parameters</h2>
+<p>None.</p>
+
+
+
+</%method>
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

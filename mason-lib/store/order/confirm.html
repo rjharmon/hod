@@ -1,0 +1,225 @@
+<%args>
+$order_number => undef
+$cc_number => undef
+$cc_security => undef
+</%args>
+
+<%method checkout_title>
+Please Confirm your Order
+</%method>
+
+<%once>
+use Business::CreditCard;
+</%once>
+
+<%init>
+use Hod::Sales_Tax;
+$m->comp('/session.m');
+
+$session->{confirm} ||= {};
+if( $order_number ) {
+	return $m->comp('/store/order/complete.html', %ARGS );
+}
+
+# clear any old orders sitting in the list:
+{ my $count;
+	foreach( keys %{ $session->{orders} } ) {
+		my( $num ) = /(\d+)/;
+		$count++,
+		delete $session->{orders}{$_} if time() - $num > (5 * 24 * 60 * 60);
+	}
+	warn "Trimmed $count orders from session\n" if $count > 0;
+} 
+
+my $user = $session->{'store'}{'user_address'};
+my $cart_items = $session->{'store'}{'cart'}{'items'};
+$m->comp('/store/catalog/offers/apply.m');
+
+my $catalog_index = [ $m->comp( '/store/shop/fetch_item.m', sku => [ map { $_->{sku} } @$cart_items ] ) ];
+$catalog_index = { map { $_->{sku} => $_ } @$catalog_index };
+
+my $items = [];
+foreach my $item ( @$cart_items ) {
+	if ( $catalog_index->{$item->{sku}}{active} ) {
+		push @$items, { %$item };
+	}
+}
+my $cart = $session->{store}{cart};
+
+my $order = { 
+	user => { %$user },
+	date => time(),
+	card => { 
+		name => $cart->{cc_name},
+		last4 => substr( $cc_number, -4 ),
+		number => 'xxxx xxxx xxxx '. substr( $cc_number, -4 ),
+		expire => "$cart->{cc_expmonth}/$cart->{cc_expyear}",
+		type => cardtype( $cc_number ),
+	},
+	items => $items,
+};
+
+my( $tax_state, $tax_county, $local_rate, $state_rate ) = 
+	$m->comp('/store/options.m', option => [ qw(tax_state tax_county tax_rate_local tax_rate_state) ] );
+
+my $vendor = $m->comp('/store/vendor/fetch.m');
+
+$tax_state  ||= $vendor->{tax_state};
+$tax_county ||= $vendor->{tax_county};
+$local_rate ||= $vendor->{tax_rate_local};
+$state_rate ||= $vendor->{tax_rate_state};
+
+my $pr = $m->comp('calc_pricing.html', order => $order );
+if( ! ($tax_state && $tax_county && $local_rate && $state_rate ) && ( 0+$pr->{taxable_subtotal} ) ) {
+	$m->comp('dev_error_taxes',
+		tax_state => $tax_state,
+		tax_county => $tax_county,
+		local_rate => $local_rate,
+		state_rate => $state_rate,
+	);
+	return;
+}
+
+my $shipping_options;
+my $shipping_method;
+{
+ 	my $mod = $m->comp( '/store/options.m', option => 'shipping_module' );
+	unless( defined $mod ) {
+		$m->out("DEVELOPMENT ERROR: custom option 'shipping_module' not found!" );
+ 	} elsif( $mod ) {
+	 	$shipping_options = $m->comp( $mod, fetch => 'options' );
+		$session->{store}{cart}{shipping_options} = $shipping_options;
+		$shipping_method = $session->{store}{cart}{shipping_method};
+ 	} else {
+		$shipping_options = { "00" => "None" };
+		$session->{store}{cart}{shipping_options} = $shipping_options;
+		$shipping_method = $session->{store}{cart}{shipping_method};
+	}
+}
+
+my $tax = Hod::Sales_Tax->new( { 
+	'sale_state' => $tax_state,
+	'sale_county' => $tax_county,
+	'local_tax' => $local_rate,
+	'state_tax' => $state_rate,
+	'recipient_city' => $user->{'ship_city'},
+	'recipient_state' => $user->{'ship_state'},
+} );
+
+$session->{'store'}{'user_tax_rate'} = $tax->tax_rate;
+
+
+my $custom_display = $m->fetch_comp('/store/order/custom_confirm.m');
+$custom_display &&= $custom_display->subcomps();
+$custom_display ||= {};
+
+
+# All details of the order which could potentially change at the
+# session level if another browser window is active must be moved
+# to the order area here and now.
+
+$order_number = time(). "-". ( int(rand() * 900) + 100 );
+
+# warn "items is ". Data::Dumper::Dumper( $items ) if $DEBUG;
+my( $shipping, $handling ) = ( 0,0 ); 
+	# mc_comp( "get_shipping_options.html", items => $cart_items, zip => $user->{ship_zip} );
+
+my $more_order_data = {
+	tax_rate => $tax->tax_rate,
+	tax_state => $tax_state,
+	tax_area => $tax->jurisdiction,
+	shipping_options => $shipping_options,
+	shipping_method => $shipping_method,
+	handling => $handling,
+	discount_posttax => $session->{store}{discount_posttax},
+	discount_pretax => $session->{store}{discount_pretax},
+	order_number => $order_number
+};
+map { $order->{$_} = $more_order_data->{$_} } keys %$more_order_data;
+
+$order->{price} = $m->comp('calc_pricing.html', order => $order );
+
+$session->{orders}{$order_number} = $order;
+
+$m->comp( "/session.m", save => 1 );
+</%init>
+
+%# confirm: <pre><% Data::Dumper::Dumper( \%ARGS ) %></pre>
+% if ( $order_number && $order_number !~ /^[-0-9]{10,14}$/ ) {
+	<p><b>Error</b>: bad order number</p>
+%	return;
+% }
+
+<form method=POST action="/store/order/confirm.html">
+  <input type=hidden name=order_number value="<% $order_number %>">
+  <input type=hidden name=cc_number value="<% $cc_number %>">
+  <input type=hidden name=cc_security value="<% $cc_security %>">
+
+% if( my $t = $custom_display->{top_of_form} ) {
+	<& $t, order => $order &>
+% } else {
+	<p>This is the final step in the ordering process.  Before placing 
+	the order, please confirm the items, sizes, colors, quantities, and 
+	shipping and billing information below.</p><p>
+	If you wish to make a change, please return to your 
+	<a href="/store/shop/index.html">shopping cart</a> to make changes.
+    </p>
+	<input name=confirm type=submit value="Place Order">
+% }  # custom top-of-form
+  <hr>
+
+<& invoice.m, order => $order &>
+
+% if( my $t = $custom_display->{bottom_of_form} ) {
+<& $t &>
+% } else {
+<p>If the information above is correct, then click here to
+	<input name=confirm type="submit" value="Complete your Order">
+</p>
+% }
+</form>
+
+
+
+<%def dev_error_taxes>
+<%args>
+$tax_state
+$tax_county
+$local_rate
+$state_rate
+</%args>
+<h1>Development Error</h1>
+
+<p>The following settings must be defined in /store/custom_options.m: </p>
+
+<ul>
+	<li>tax_state (currently <% $tax_state || 'missing' %>)
+	<li>tax_county (currently <% $tax_county || 'missing' %>)
+	<li>tax_rate_local (currently <% $local_rate || 'missing' %>)
+	<li>tax_rate_state (currently <% $state_rate || 'missing' %>)
+</ul>
+
+<p>For more information, check the docs for
+<a href="/doc.html?module=/store/custom_options.m">/store/custom_options.m</a>.
+</p>
+</%def>
+
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

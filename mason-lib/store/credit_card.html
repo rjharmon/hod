@@ -1,0 +1,431 @@
+<%args>
+$cc_number => undef
+$cc_security => undef
+</%args>
+
+<%method .doc_synopsis>
+<b>Customize the Credit Card/Shipping Method page</b>
+</%method>
+<%method .doc>
+<h2>Usage</h2>
+
+<p>The <tt>/store/credit_card.html</tt> page is called automatically 
+during checkout, after the user has provided complete addressing info.
+</p>
+
+<p>A form is displayed, appropriate for collecting credit card details
+and selecting a shipping method, depending on the shipping system 
+identified in <tt>/store/custom_options.m</tt>.  Credit card information is 
+authenticated before allowing the user to proceed to order detail 
+verification.
+</p>
+
+<h2>Customizing</h2>
+
+<h3>Use <tt>/store/custom_options.m</tt></h3>
+
+<p>A number of simple settings are available in <tt>/store/custom_options.m</tt>.
+These settings are used to control available types of credit cards, selection
+of the shipping module, and minor layout issues.</p>
+
+<ul>
+	
+	<li><p><b>payment_cards</b>: defines the available card types, as an array
+	reference.  Default: [ qw(visa mastercard) ]. Example:</p>
+	<pre>...
+payment_cards => [ qw(visa mastercard discover amex) ],
+...</pre>
+
+	<li><p><b>shipping_module</b>: Selects the shipping module used for
+	the store.  You can use an existing shipping module such as 
+	<tt>/store/shipping/ups.m</tt>, or you can create your own, such as
+	<tt>/store/custom_shipping.m</tt>. </p>
+
+	<li><p><b>shipping_options_align</b>: Specifies alignment for the 
+	shipping options.  Default 'center'; 'left' and 'right' also 
+	accepted, or use any setting permitted by the browser's 
+	&lt;TD align="..."&gt; attribute. </p>
+
+
+</ul>
+
+<p>For more information about using custom_options.m, see 
+<a href="/doc.html?module=/store/options.m[SHARED]">these docs</a>.</p>
+
+<h3>Additional HTML</h3>
+
+<p>In addition to the settings above, you can provide custom HTML for labeling the
+top and bottom of the selection area for the shipping method.  Simply define the
+following Mason methods:
+
+<ul>
+	<li><p><b>html_before_shipping_method</b>: Defines the label used above the
+	shipping methods.  The default is:</p>
+
+	<pre><%  $m->current_comp()->owner->scall_method("html_before_shipping_method" ) |h %></pre>
+
+	<p>Example: Setting a different label above the shipping methods:</p>
+
+<pre><% <<EOD
+<\%method html_before_shipping_method>
+My crazy label:
+</\%method>
+EOD
+ |h %></pre>	
+
+	<li><p><b>html_after_shipping_method</b>: Defines a label or other HTML used
+	below the shipping methods.  Nothing is displayed here by default.</p>
+
+	<pre><% <<EOD
+<\%method html_after_shipping_method>
+My crazy list of shipping methods above.  Notice: Delivery times are estimated by UPS.
+</\%method>
+EOD
+ |h %></pre>
+
+
+</%method>
+
+<%shared>
+my $post = 0;
+my $post_rv = undef;
+my $post_content = '';
+my $focus = 'cc_name'; # which field will be given focus?
+my $reenter = '';
+my( $ca_image,$ca_url );
+my $colors = $m->comp('/theme.m:current_colors');
+my $styles = $m->comp('/theme.m:current_styles');
+</%shared>
+
+<%method checkout_title>
+Checkout: Credit Card Information
+</%method>
+<%method title>
+% if( $post && $post->method_exists( 'checkout_title' ) ) {
+<% $post->call_method('checkout_title', %ARGS ) %>
+% } else {
+<& SELF:checkout_title &>
+% }
+</%method>
+
+<%method try_post>
+<%args>
+$cc_number => undef
+$cc_security => undef
+$submit => undef
+</%args>
+<%init>
+
+use Apache::Constants qw(:response);
+use Business::CreditCard;
+
+return unless $m->comp('/secure.redirect.html');
+$m->comp('/session.m');
+
+my $cart_items = $session->{store}{cart}{items};
+unless( ref( $cart_items ) eq 'ARRAY' && $#$cart_items > -1 ) {
+	return $m->comp('/redir.m', uri => '/store/shop/index.html' );
+}
+
+$m->comp( '/session.m',
+	fetch => [ qw(cc_name cc_expmonth cc_expyear shipping_method) ],
+	location => $session->{store}{cart}, args => \%ARGS,
+);
+$r->no_cache(1);
+my @now = localtime( time );
+my( $now_month, $now_year ) = ($now[4] + 1, 1900 + $now[5] );
+$session->{store}{cart}{cc_expmonth} ||= $now_month;
+$session->{store}{cart}{cc_expyear}||= $now_year;
+
+my $empty = [];
+if( $submit ) {
+	$focus = 'cc_number';
+	unless( $m->comp( '/session.m',
+		save => [ qw(cc_name cc_expmonth cc_expyear shipping_method) ],
+		location => $session->{store}{cart},
+		args => \%ARGS,
+		empty_fields => $empty
+	) ) {
+		$empty = [ ( grep { $_ ne 'shipping_method' } @$empty ) ];
+		if( $#$empty > -1 ) {
+			$reenter = 'Please complete the credit card information.';
+			$focus = shift @$empty;
+		}
+	} 
+	if( $cc_number ) {
+		$cc_number =~ s/[^\d]//g;
+		unless( validate( $cc_number ) ) {
+			$reenter = $m->scomp("SELF:bad_card");
+		}
+
+		my $card_type = cardtype( $cc_number );
+		my $good_card = 0;
+		my $accept = $m->comp('/store/options.m', option=> 'payment_cards' );
+		foreach( map { {  # these are the labels returned by cardtype()
+			visa => "VISA card",
+			mastercard => "MasterCard",
+			discover => 'Discover card',
+			amex => 'American Express card',
+		}->{lc $_} } @$accept ) {
+			$good_card = 1, last if $card_type eq $_;
+		}
+		unless( $good_card ) {
+			$reenter = $m->scomp("SELF:card_type_not_accepted", type => $card_type);
+		}
+	} else {
+		$reenter = 'Please complete the credit card information.';
+	}
+	if( ! $cc_security ) {
+		$reenter or (
+			$focus = 'cc_security',
+			$reenter = 'Please provide the credit card\'s security code.'
+		);
+		$focus ||= 'cc_security';
+	}
+	
+	my $cc_exp = "$ARGS{cc_expyear}$ARGS{cc_expmonth}";
+
+	if( sprintf ( "%04d%02d", $now_year, $now_month ) gt $cc_exp ) {
+		$reenter .= 'This expiration date has passed.';
+		$focus = 'cc_expmonth';
+	} else {
+		if( $ARGS{cc_name} ) { $focus ||= 'cc_number' }
+	}
+	unless( $reenter ) {
+		$m->comp('/session.m', save => 1 );
+
+		$post = $m->fetch_comp('/store/order/confirm.html');
+		$post_rv = $m->comp( $post, %ARGS, STORE => \$post_content );
+		return 1;
+	}
+} else {
+	$focus = 'cc_number' if $session->{store}{cart}{cc_name};
+}
+return 0;
+</%init>
+</%method>
+
+<%method bad_card>
+Invalid credit card number.  Please check your card number and re-enter.
+</%method>
+
+<%method card_type_not_accepted>
+<%args>
+$type
+</%args>
+We do not accept this type of credit card (<% $type %>).  Please use a different 
+card or check your credit card number.
+</%method>
+
+% if( $post ) { 
+	<% $post_content %>
+%	return $post_rv;
+% } 
+<%perl>
+
+my $secure_ca = $r->dir_config("secure_ca");
+my $secure_certid = $r->dir_config("secure_certid") 
+	|| $m->comp('/store/options.m', option=> 'ssl_code' );
+
+if ( $secure_ca eq "Thawte" || $secure_ca eq "generic" ) {
+
+	$ca_image = "thawte.gif";
+	$ca_url = "https://www.thawte.com/cgi/server/certdetails.exe?code=";
+
+} elsif ( $secure_ca eq "IPS-CA" ) {
+
+	$ca_image = "ipsca.gif";
+	$ca_url = "https://certs.ipsca.com/sslcheck/servidorseguro.asp?numeroserie=";
+
+} elsif ( $secure_ca eq "Verisign" ) {
+
+	$ca_image = "verisign.gif";
+	$ca_url = "https://digitalid.verisign.com/cgi-bin/Xquery.exe?Template=authCertByIssuer&form_file=../fdf/authCertByIssuer.fdf&issuerSerial=";
+
+} elsif( $secure_ca eq "GeoTrust QuickSSL" ) {
+	$ca_image = "geotrust.gif";
+	$secure_certid = 'any';
+} else {
+
+	$ca_image = "ssl_ca_error.gif";
+
+}
+</%perl>
+
+<form method="post" name="creditcard" accept-charset="UTF-8, ISO-8859-1" action="/store/credit_card.html">
+<TABLE cellSpacing="0" cellPadding="1" border="0" width="475" align="center" bgcolor="#dddddc">
+<TBODY>
+<tr bgColor="<% $colors->{header} %>">
+<td colspan="1" width="160"></td>
+<td colspan="1" width="60"></td>
+<td colspan="1" width="50"></td>
+<td colspan="1" width="30"></td>
+<td colspan="1" width="75"></td>
+<td colspan="1" width="100"></td>
+</tr>
+<tr bgColor="<% $colors->{header} %>">
+<TD align="center" colSpan="6"><h2 style="margin:2px">Payment and Shipping Method
+</h2></TD></TR>
+<TR>
+<TD align=center colSpan="6" style="padding:8px">
+
+% my $accept = $m->comp('/store/options.m', option=> 'payment_cards' ) 
+%	|| [qw(Visa Mastercard Discover Amex)];
+% foreach( map { {
+%	visa => "visa",
+%	mastercard => "mc",
+%	discover => 'discover',
+%	amex => 'amex',
+% }->{lc $_} } @$accept ) {
+<img src="/i/we_accept_<% $_ %>.gif" height="23" width="37" alt="We gladly accept these credit cards">&nbsp;&nbsp;
+% }
+</TD></TR>
+
+% if( $reenter ) {
+<TR>
+<TD colspan="6"><font color=red><b><% $reenter %></b></font></TD>
+</TR>
+% }
+<TR>
+<TD align=right colspan="1"><label for="ccname"><b>Card Holder's Name:</b></label></TD>
+<TD colspan="4"><INPUT maxLength=40 size=30 name=cc_name value="<% $session->{store}{cart}{cc_name} %>" id="ccname" tabIndex="1"></TD>
+<TD align="center" colspan="1" rowspan="3" <% ( $secure_certid eq 'none' || ! $secure_certid ) ? "bgcolor=#cc6666><span style=\"font-size: 10px\">No ssl_code defined</span><br>" : ">"%>
+% if( $ca_url ) {
+<a tabIndex=11 target="HTML" onClick="window.open('<% $ca_url %><% $secure_certid %>', 'CERT', 'menubar=no,scrollbars,toolbar=no,resizable=no,width=550,height=400'); return false" HREF="<% $ca_url %><% $secure_certid %>">\
+% }
+<IMG src="/store/<% $ca_image %>" width="100" height="63" vspace="0" border="0" alt="<% $ca_url ? "Click for more details." : "Secured by $secure_ca" %>">\
+% if( $ca_url ) {
+</a>\
+% }
+&nbsp;<br>
+</TD>
+</TR><TR>
+<TD align=right colspan="1"><label for="ccnum"><b>Credit Card #:</b></label></TD>
+<TD colspan="4"><INPUT maxLength=16 size=30 name=cc_number autocomplete="off" value="<% $cc_number %>" id="ccnum" tabIndex="2"></TD>
+</TR>
+<TR>
+<TD align=right colspan="1"><label for="expdate"><b>Expiration Date:</b></label></TD>
+<TD colspan="3"><nobr>
+% my $mon_abbr = { 1 => 'Jan', 2 => 'Feb', 3 => 'Mar', 4 => 'Apr',
+%                   5 => 'May', 6 => 'Jun', 7 => 'Jul', 8 => 'Aug',
+%                   9 => 'Sep', 10 => 'Oct', 11 => 'Nov', 12 => 'Dec' };
+% my $selected = sub { my $foo = shift; $session->{store}{cart}{cc_expmonth} == $foo ? " SELECTED" : "" };
+<SELECT name=cc_expmonth id="expdate" tabIndex="3">
+% for my $mon ( 1..12 ) {
+	<OPTION value="<% sprintf("%02d", $mon) %>"<% &$selected($mon) %>><% $mon_abbr->{ $mon } . " - " . sprintf( "%2.f", $mon ) %>
+% }
+</SELECT>
+% $selected = sub { my $foo = shift; $session->{store}{cart}{cc_expyear} eq $foo ? " SELECTED" : "" };
+<SELECT name=cc_expyear tabIndex="4"> 
+% for my $year ( 2002..2015 ) {
+<OPTION value="<% $year %>"<% &$selected( $year ) %>><% $year %>
+% }
+</SELECT>
+</nobr>
+</TD>
+</TR>
+
+<tr>
+	<td align=right colspan="1"><label for="seccode"><b><nobr>&nbsp;3-4 Digit Security Code:</nobr></b></label></td>
+	<td colspan="1">
+	<input type="text" size="5" id="seccode" name="cc_security" tabIndex="5" maxlength=4>
+</td>
+<td colspan="1">
+<a target="_blank" onClick="window.open('/store/cvv2_info.html', 'CVV2', 'menubar=no,toolbar=no,resizable=no,width=640,height=480'); return false" href="/store/cvv2_info.html">
+<img src="/i/cc_security.gif" width="47" height="28" alt="Help me find my Security Code" border="0" align="middle"></a>
+</td>
+<td colspan="3">
+<span style="font-size: 7pt;">
+(The code is on the back of your card)<br>
+<a tabIndex=10 style="font-size: 7pt;" target="_blank" onClick="window.open('/store/cvv2_info.html', 'CVV2', 'menubar=no,toolbar=no,resizable=no,width=640,height=480'); return false" href="/store/cvv2_info.html">
+Need help finding the Security Code?</a>
+</td>
+</tr>
+<TR>
+<TD colSpan="6" height="6"></TD></TR>
+<TR>
+<TD colSpan="6" align="<% $m->comp('/store/options.m', option => 'shipping_options_align' ) || "center" %>">
+% my $this_mod;
+% {
+<& SELF:html_before_shipping_method &>
+<%method html_before_shipping_method>
+<b>&nbsp;&nbsp;Select Shipping Method</b><br>
+</%method>
+% 	my $mod = $this_mod = $m->comp( '/store/options.m', option => 'shipping_module' );
+%	unless( defined $mod ) {
+<font color=red><b>DEVELOPMENT ERROR</b>: custom option 'shipping_module' not found!</font>
+% 	} elsif( $mod ) {
+%	 	my $shipping_options = $m->comp( $mod, fetch => 'options' );
+%		$session->{store}{cart}{shipping_options} = $shipping_options;
+%	 	my $shipping_desc = $m->comp( $mod, fetch => 'descriptions' );
+%		my $meth = $session->{store}{cart}{shipping_method};;
+%	 	foreach( sort { $shipping_options->{$a} <=> $shipping_options->{$b} } keys %$shipping_options ) {
+%			$meth ||= $_;
+			<nobr><label for="Shipping_Option_<% $_ %>">&nbsp;&nbsp;&nbsp;<INPUT type="radio"<% $meth eq $_ ? " CHECKED" : "" %> value="<% $_ %>" name="shipping_method" id="Shipping_Option_<% $_ %>" tabIndex="6">
+			<% $shipping_desc->{$_} %> - $<% $shipping_options->{$_} %></label>&nbsp;&nbsp;&nbsp;&nbsp;</nobr>
+			<% $m->comp( '/store/options.m', option => "shipping_method_html_after" ) || "" %>
+% 		}
+%	} else {
+%		<input type=hidden name="shipping_method" value="00">
+%	}
+%       if( keys( %{ $session->{store}{cart}{shipping_options} } ) eq 0 && $this_mod !~ /simple\.m/ ) {
+        <br><br><b><font color="red">Please use your browser's back button to modify your shipping address.</font></b>
+%       }
+
+<& SELF:html_after_shipping_method &>
+<%method html_after_shipping_method></%method>
+%	$m->comp('/session.m', save => 1 );
+% }
+</TD></TR>
+<TR>
+<TD colSpan="6" height="5"></TD></TR>
+<TR>
+<TD align=center colSpan="6" style="font-size: 85%;">
+&nbsp;For your protection all transactions are closely monitored and logged including 
+details such as your IP address
+% my $browsers_ip = $r->connection->remote_ip();
+(<b><% $browsers_ip %></b>) and other important information.&nbsp;Our&nbsp;<a href="/privacy_policy.html" target="_blank" tabIndex="9">Privacy Policy</a>.</TD></TR>
+<tr><td colspan="6" align="center">
+
+<br>
+<input type=submit name=submit value="Review your Order" tabIndex="7"<% keys( %{ $session->{store}{cart}{shipping_options} } ) eq 0 && $this_mod !~ /simple\.m/ ? " disabled" : "" %>>
+
+
+</TD></TR>
+<tr><td height="5"></td></tr>
+
+</TBODY></TABLE>
+
+</FORM>
+
+% if( $focus ) {
+<script language=javascript type="text/javascript">
+<!--
+var t = document.forms['creditcard'].<% $focus %>;
+t.focus();
+if( ! t.options ) {
+        t.select();
+}
+// -->
+</script>
+% }
+
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

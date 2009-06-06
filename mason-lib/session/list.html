@@ -1,0 +1,103 @@
+% $m->comp('/session.m');
+% unless( $session->{site_admin} ) {
+<h1>Permission Denied</h1>
+
+<p>You have not been authorized to access this resource.
+</p>
+% return(404);
+% }
+
+
+<h1>Visitor Sessions</h1>
+
+<form method=get action="/session/list.html">
+	<& /db_pager.m, %$pager_options, mode => 'filter', args => \%ARGS &><br>
+</form>
+
+<p><b>To Impersonate A Visitor:</b> Click the session ID to impersonate this 
+visitor.  When finished impersonating, you can log out at /session/logout.html,
+or you can simply exit your browser; the impersonation uses a very temporary cookie.
+</p>
+
+<center><& /db_pager.m, %$pager_options, mode => 'index', args => \%ARGS &></center>
+
+<table align=center cellspacing=0 cellpadding=2 cellspacing=0 border=1><tr bgcolor="#9999ff">
+	<th>&nbsp;</th>
+		<th>Session ID</th>
+			<th>Email</th>
+				<th>Auth Code</th>
+					<th>Site Admin</th>
+						<th>Orders</th>
+<& $site_opt->subcomps('extra_headers') &>
+</tr>
+<%def .pager_item>
+<%args>
+$item
+</%args>
+% $flip = 1 - $flip;
+<tr <% $flip ? 'bgcolor="#ccccff"' : "" %>>
+	<td><a href="/session/edit.html?id=<display name=id>&action=edit"><img src="/i/edit-small.gif" width=21 height=17 border=0 alt="edit"></a></td>
+		<td>
+<a style="font-size:9px" href="/v.h?e=<% $item->{email} |u %>&v=<% $item->{vcode} |u %>&impersonate=1">
+<display name=id>
+</a></td>
+	<td><a href="mailto:<display name=vcode_email>"><display name=vcode_email></a>&nbsp;</td>
+		<td><display name=vcode>&nbsp;</td>
+			<td><display name=site_admin>&nbsp;</td>
+<& $site_opt->subcomps('extra_details'), item => $item &>
+% my $orders = $m->comp('/db_single_item.m', 
+%	query => 'select count(*) from orders where billto_email=? and dev_only <> "x" and complete=1',
+%	args => $item->{vcode_email}
+% );
+<td><a href="/store/order/reports/index.html?Year=All%20Years&Period=all&Email=<% $item->{vcode_email} |u %>"><% $orders || '' %></a></td>
+
+</tr>
+</%def>
+
+<& /db_pager.m,
+	%$pager_options,
+	mode => 'list',
+	args => \%ARGS
+&>
+
+</table>
+
+<center><& /db_pager.m, %$pager_options, mode => 'index', args => \%ARGS &></center>
+
+
+
+<%init>
+my $pager_options = {
+	table => 'session',
+	order => 'email,id',
+	self_url => '/session/list.html',
+	definition => '/session/definition.m',
+};
+</%init>
+<%shared>
+my $flip = 1;
+my $site_opt = $m->fetch_comp('/session/custom_list.m') || $m->fetch_comp('/session/list.html');
+</%shared>
+
+<%def extra_headers></%def>
+<%def extra_details></%def>
+
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

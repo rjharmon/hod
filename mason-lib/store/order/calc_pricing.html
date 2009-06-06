@@ -1,0 +1,68 @@
+<%args>
+$order
+$DEBUG => 0
+</%args>
+<%init>
+my( $taxable_subtotal, $subtotal, $total, $weight );
+for my $item ( @{ $order->{items} } ) {
+	my $sql = "select short_description, weight, taxable, price from product where sku=" . $dbh->quote( $item->{sku} );
+	warn $sql if $DEBUG;
+	my $detail = $m->comp( '/db_fetch.m', query => $sql );
+	$detail = $detail->[0];
+	my $price = ( $item->{quantity} * ( $detail->{'price'} - $item->{discount} + $item->{upcharge}) );
+	$subtotal += $price;
+	$taxable_subtotal += $price if( $detail->{taxable} );
+
+	$weight += $detail->{weight} * $item->{quantity};
+}
+
+$weight = 1 if $weight < 1;
+
+$subtotal -= $order->{discount_pretax};
+$taxable_subtotal -= $order->{discount_pretax};
+
+my $shipping = eval { $order->{shipping_options}{ $order->{shipping_method} } } || 0;
+
+my $price = {
+	weight => $weight,
+	shipping => $shipping,
+	handling => $order->{handling},
+ 	subtotal => $subtotal,
+ 	taxable_subtotal => $taxable_subtotal
+};
+
+warn "taxable subtotal is $taxable_subtotal" if $DEBUG;
+my $tax = sprintf("%.2f", 
+	int( 
+		( 100 * $price->{taxable_subtotal} * $order->{tax_rate} ) + 0.5 
+	) / 100
+);
+$tax = 0 if $session->{tax_exempt};
+$total = $price->{shipping} + $price->{handling} + $price->{subtotal} + $tax;
+
+$price->{tax} = $tax;
+$price->{total} = $total - $order->{discount_posttax};
+
+$price = { map { $_ => sprintf("%.2f", $price->{$_} ) } keys %$price };
+
+return $price;
+</%init>
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

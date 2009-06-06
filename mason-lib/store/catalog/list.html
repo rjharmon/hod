@@ -1,0 +1,262 @@
+<%args>
+$which => undef
+$display_as => 'summary'
+$infinite => 0
+$DEBUG => 0
+</%args>
+<%once>
+my $display;
+my $no_pager;
+my( $category, $sub_category, $search_type, $search_query );
+my( $search_clause, $active_clause, $pager_options, $init_done );
+use Date::Manip;
+</%once>
+<%shared>
+my $last_cat = '';
+my $theme;
+</%shared>
+<%init>
+$m->comp('.init', %ARGS );
+$display = $display_as || 'summary';
+$no_pager = $infinite;
+</%init>
+
+<%def .init>
+<%args>
+$which => undef
+</%args>
+<%perl>
+return if $init_done;
+$init_done = 1;
+$ARGS{'SubCat'} = "All Categories" unless $ARGS{'SubCat'};
+$ARGS{which} ||= "enabled";
+$which = $ARGS{which};
+( $category, $sub_category ) = split( ':', $ARGS{'SubCat'} );
+
+$theme = $m->comp("/theme.m:current_colors");
+
+
+if( $which eq 'all' ) {
+	$active_clause = 1;
+} elsif( $which eq 'enabled' ) {
+	$active_clause = "active='X' ";
+} elsif( $which eq 'disabled' ) {
+	$active_clause = "active<>'X' ";
+} else {
+	$active_clause = 1;
+}
+
+if( $category && $category ne 'All Categories' ) {
+	$search_clause .= "category=" . $dbh->quote( $category ) . " ";
+}
+
+if( $sub_category ) {
+	$search_clause .= "and " if $search_clause;
+	$search_clause .= "sub_category=" . $dbh->quote( $sub_category );
+}
+
+$search_query = $ARGS{'search_query'};
+if( $search_query ) {
+	my $searchby = $ARGS{'SearchBy'};
+	$search_clause .= "and " if $search_clause;
+
+	if( $searchby eq 'Number-Desc' ) {
+		$search_clause .= "( sku like '%$search_query%' or short_description like '%$search_query%' or long_description like '%$search_query%' ) ";
+	} elsif( $searchby eq 'Item Number' ) {
+		$search_clause .= "sku like '%$search_query%'";
+	} elsif( $searchby eq 'Short Description' ) {
+		$search_clause .= "short_description like '%$search_query%'";
+	} else {
+		warn "unknown SearchBy: $searchby. Assuming sku/description search.\n";
+		$search_clause .= "( sku like '%$search_query%' or short_description like '%$search_query%' ) ";
+	}
+}
+
+$search_clause = '1' unless $search_clause;
+
+# warn "$search_clause and $active_clause" if $DEBUG;
+
+$pager_options = {
+	table => 'product',
+	definition => '/store/catalog/definition.m',
+	order => 'category,sku',
+	self_url => 'index.html'.
+		"?SubCat=$ARGS{SubCat}".
+		"&display_as=$ARGS{display_as}".
+		"&which=$ARGS{which}",
+	where => "$search_clause AND $active_clause",
+};
+if( $ARGS{search_query} ) {
+	$pager_options->{self_url} .= 
+		"&search_query=$ARGS{search_query}".
+		"&SearchBy=$ARGS{SearchBy}";
+}
+if( $ARGS{'infinite'} ) {
+	$pager_options->{page_size} = 999999999;
+}
+</%perl>
+</%def>
+
+% my $all_categories = $m->comp( '/db_fetch.m', 
+%	query => "select distinct category, sub_category from product where $active_clause order by category,sub_category"
+% );
+<!-- from shared store-catalog list -->
+<SCRIPT LANGUAGE="JavaScript" TYPE="text/javascript">
+<!--
+function changeCat(theform) {
+num= theform.SubCat.selectedIndex;
+if (num==0) { site = "list.html?SubCat=All+Categories&which=<% $ARGS{which} %>"; }
+
+% my $n = 1;
+% for my $cat ( @$all_categories ) {
+if (num==<% $n %>) { site = "list.html?SubCat=<% $cat->{'category'} . ( $cat->{'sub_category'} ? ":" . $cat->{'sub_category'} : "" ) %>&which=<% $ARGS{which} %>"; }
+%   $n++;
+% }
+top.location.href=site;
+}
+
+function changeType(theform) {
+num= theform.which.selectedIndex;
+if (num==1) { site = "list.html?SubCat=<% $ARGS{SubCat} %>&which=All+Items"; }
+if (num==2) { site = "list.html?SubCat=<% $ARGS{SubCat} %>&which=Enabled+Items"; }
+if (num==3) { site = "list.html?SubCat=<% $ARGS{SubCat} %>&which=Disabled+Items"; }
+top.location.href=site;
+}
+
+//-->
+</SCRIPT> 
+
+
+% if ( $ARGS{search_query} eq "" ) {
+	<form action="list.html" method=get>
+	<SELECT id=SearchType name=which ONCHANGE="this.form.submit()" class="ItemText">
+%	foreach( qw(all enabled disabled) ) {
+		<OPTION value="<% $_ %>"<% $_ eq $ARGS{'which'} ? " SELECTED" : "" %>> <% ucfirst $_ %> Items
+%	}
+	</SELECT>
+	<SELECT id=SubCat name=SubCat ONCHANGE="this.form.submit()" class="ItemText">
+		<OPTION value="All Categories">All Categories
+%	foreach my $cat ( @$all_categories ) {
+%		next unless $cat->{category};
+%		my $display = $cat->{'category'} .
+%			( $cat->{'sub_category'} ? ": ". $cat->{'sub_category'} : "" );
+%		my $value = $cat->{'category'} . 
+%			( $cat->{'sub_category'} ? ":" . $cat->{'sub_category'} : "" );
+		<OPTION value="<% $value %>"<% $value eq $ARGS{SubCat} ? " SELECTED" : "" %>><% $display %>
+%	}
+	</SELECT>
+Display As: <select class="ItemText" name=display_as onChange="this.form.submit()">
+%	foreach( qw(summary photos description) ) {
+		<option value="<% $_ %>"<% $display_as eq $_ ? " SELECTED" : "" %>><% ucfirst $_ %>
+%	}
+	</select>
+ 	<nobr><input type=checkbox name=infinite value=1 onClick="this.form.submit()">All on one page<nobr>
+<span class="Search">&nbsp;</span><a href="search.html">Advanced Search</a><hr>
+	</form>
+
+% } else {
+
+<span class="ItemText">Search results for '<span class="SearchResult"><% $ARGS{search_query} %></span>' by <% $ARGS{SearchBy} %>.</span>
+&nbsp;<a href="search.html" class="QuickTipLink">New Search</a>
+
+% }
+
+% my $count = $m->comp( '/db_single_item.m', query => "select count(*) as count from product WHERE $search_clause AND $active_clause" );
+<% $count %> records:
+
+<& .index, %ARGS &>
+<br>
+<TABLE cellSpacing=0 cellPadding=5 border=0 cols="5" style="border:2px solid black">
+<TBODY>
+% if( $display eq 'summary' ) {
+	<TR class="thick_bottom" bgcolor="<% $theme->{box_title_bar} %>">
+		<TH align=center style="color: <% $theme->{box_title_text} %>">Item #</TH>
+% 	if( $m->comp('/session/is_admin.m', area => 'Store Catalog Manager', 
+%		role => [ 'site_admin', 'store_admin', 'catalog_edit_items' ],
+%		silent => 1
+%	 ) ) {
+		<TH align=center style="color: <% $theme->{box_title_text} %>">Action</TH>
+% 	}
+		<TH align=center style="color: <% $theme->{box_title_text} %>">Short Description</TH>
+		<TH align=center style="color: <% $theme->{box_title_text} %>">Status</TH>
+		<TH align=center style="color: <% $theme->{box_title_text} %>">Color</TH>
+		<TH align=center style="color: <% $theme->{box_title_text} %>">Price</TH>
+	</TR>
+% }
+
+<& /db_pager.m, 
+	%$pager_options,
+	mode => 'list',
+	args => \%ARGS
+&>
+<%def .pager_item>
+<%args>
+$item
+</%args>
+<& .init, %ARGS &>
+<!-- ITEM BEGIN -->
+% if( $item->{category} ne $last_cat ) {
+<tr class="thin_bottom" bgcolor="<% $theme->{alt_background} %>"><td colspan=6 style="color:<% $theme->{box_text} %>"><b><% $item->{category} |h %></b></td></tr>
+%	$last_cat = $item->{category};
+% }
+	<TR>
+% if( $display eq 'description' ) {
+		<td><% $item->{sku} %></td>
+		<td><p><a href="edit.html?sku=<% $item->{sku} |u %>"><% $item->{short_description} %></a></p>
+		<display name=long_description>
+		</td>
+% } elsif( $display eq 'photos' ) {
+		<td><% $item->{sku} %></td>
+		<td><a href="edit.html?sku=<% $item->{sku} |u %>"><% $item->{short_description} %></a></td>
+		<td><% $item->{weight} %> lbs</td>
+		<td><% sprintf( "$\%.2f", $item->{price} ) %></td>
+	</tr>
+	<tr>
+		<td colspan=2><img src="/repository/large/<% $item->{large_pic} %>"></td>
+		<td colspan=2><img src="/repository/small/<% $item->{small_pic} %>"></td>
+
+% } else {
+% 	my $active_status = ( $item->{'active'} ? 'Enabled' : 'Disabled' );
+		<TD align=center class="SmallText"><nobr><% $item->{'sku'} %></nobr></TD>
+% if( $m->comp('/session/is_admin.m', area => 'Store Catalog Manager - Edit Items', 
+%	role => [ 'site_admin', 'store_admin', 'catalog_edit_items' ],
+%	silent => 1
+% ) ) {
+		<TD align=center class="SmallText"><a href="edit.html?sku=<% $item->{'sku'} |u %>">Edit</a></TD>
+% }
+		<TD align=left class="SmallText"><% $item->{'short_description'} %></TD>
+		<TD align=center class="SmallText"><% $active_status eq 'Disabled' ? '<span class="Disabled">Disabled</span>' : 'Enabled' %></TD>
+		<TD align=center class="SmallText"><display name=color>&nbsp;</TD>
+		<TD align=right class="SmallText">$<% $item->{'price'} %></TD>
+% }
+	</TR>
+	<!--ITEM END -->
+</%def>
+<%def .none_found>
+<tr><td colspan=6>No records found</td></tr>
+</%def>
+</TBODY></TABLE>
+
+<!-- BEGIN Search Table -->
+<BR>
+<& .init, %ARGS &>
+<& .index, %ARGS &>
+<!-- END Search Table -->
+
+
+<%def .index>
+% return if $no_pager;
+<div align=center>
+<& /db_pager.m,
+	%$pager_options,
+	mode => 'index',
+	normal => 'QuickTip',
+	selected => 'QuickTipBold',
+	disabled => 'QuickTip',
+	args => \%ARGS
+&>
+</div>
+</%def>
+
+
+% $init_done = 0;

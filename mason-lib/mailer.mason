@@ -1,0 +1,316 @@
+<%method .doc_synopsis>
+The mailer.mason module formats and emails a posted form's contents, with
+certain minimum formatting abilities.
+</%method>
+<%method .doc>
+<h2>Usage</h2>
+
+<p>To use mailer.mason, create a HTML page with a form that posts to 
+itself, then add a Perl if() statement so the page responds differently
+when it receives its own post.  For instance, in query.html, the form 
+might look like this:</p>
+
+<pre><% <<EOD
+<form method=POST action="query.html">
+Your name: <input name=your_name><br>
+Your email: <input name=email type=text><br>
+Comments: <textarea name="comments">
+</textarea><br>
+<input type=submit name=submit value="Submit">
+</form>
+EOD
+|h %>
+</pre>
+
+<p>Then, you'd wrap that form in an if() statement, something like this:</p>
+
+<pre><% <<EOD
+% if( ! \$ARGS{submit} ) {
+    <!-- insert the above block here -->
+% } else {
+    <!-- call to mailer.mason, as detailed below -->
+
+    <p>Thank you for your submission.  Would you like 
+    to <a href="...">keep shopping</a>?</p>
+% }
+EOD
+|h %>
+</pre>
+
+<p>Now, insert your call to mailer.mason: </p>
+
+<pre><% <<EOD
+<\& /mailer.mason, ARGS => \%ARGS,
+    to => 'whoever\@whereever.com'
+    from => \$ARGS{email},
+    subject => "Form Submission",
+    body => 
+"The following form was posted to the web site:\\n\\n"
+\&>
+EOD
+|h %></pre>
+
+<h2>Parameters</h2>
+
+<p>The following parameters are used by this module:</p>
+<ul>
+	<li><p><b>ARGS</b> (required): The most important item you can pass, this parameter 
+	provides all the information that will be formatted and emailed.  It is 
+	a reference to a hash of arguments, usually passed as <code>\%ARGS</code>.</p>
+
+	<li><p><b>to</b> (required): Identifies the email address to which the form submission 
+	will be sent.</p>
+
+	<li><p><b>from</b> (required): Sets the From: address for the form submission email.  
+	Commonly set to the email address from the form (<code>$ARGS{email}</code>).</p>
+
+	<li><p><b>subject</b> (required): Sets the Subject: header for the form submission email.</p>
+
+	<li><p><b>body</b> (required): Sets the content at the top of the email.  If this 
+	argument is a reference to a string, the component specified by the string will be 
+	called, and its output will be used for the top-of-mail contents.  The arguments 
+	posted to the form are sent to this component.  This is useful to make it easy for 
+	non-programmers to maintain the text in question. Example: </p>
+
+    <pre>body =&gt; \'support/form-mail-content.txt'</pre>
+
+	<li><p><b>response</b>: Sets the content at the top of the response-email.  A 
+	reference to a string is interpreted as for the <b>body</b> parameter. </p>
+	
+</ul>
+
+<h2>Behavior</h2>
+
+<p>The form-mailer module takes the <b>body</b> parameter,
+appends the formatted <b>ARGS</b> parameter, and sends an email
+using the required parameters described above.  If the <b>response</b>
+parameter is provided, it also sends a confirmation email, reversing 
+the To: and From: headers so that the customer can reply with any 
+further comments or corrections.</p>
+
+<p>The <b>ARGS</b> parameter is formatted as follows:</p>
+<ul>
+	<li><p>Arguments (form field names) with upper-case first letters
+	are displayed first, in sorted order (case-SENSITIVE sort).  A
+	blank line is displayed to separate these fields from those
+	starting with a lower-case first letter.  </p>
+
+	<li><p>Arguments with a leading underscore (_) as the first character 
+	of the name are skipped and are not displayed.</p>
+
+	<li>All remaining field names are split at any underscore
+	characters and then converted to proper-case (for example,
+	"first_name" becomes "Firs&nbsp;Name").  If the proper-case
+	field name is "Message", then the field name is not
+	displayed.  This is useful for "comment"-type fields.</p>
+
+	<li><p>If the field value has any line breaks in it, it is displayed with 
+	an extra line break before and after.  Otherwise, the value is displayed
+	starting on the same line as the field name.</p>
+
+	<li><p>If the field is multi-valued, the second and subsequent values are 
+	displayed on successive lines, indented by one tab stop.</p>
+</ul>
+
+<p>If any required arguments are not provided, a Development
+Error screen is displayed.  We recommend enhancing the if()
+statement described in the <b>Usage</b> section, to ensure that
+any of these arguments provided by the submitted form are sent
+properly (email address, for instance). An example is shown below:</p>
+
+<pre><% <<EOD
+% if( !( \$ARGS{submit} && \$ARGS{email} ) ) {
+%     if( \$ARGS{submit} && ! \$ARGS{email} ) {
+    <p><font color=red>Please provide your email 
+    address.</p>
+%     }
+    <form ...
+% } else {
+    <\& /mailer.mason ...
+    \&>
+% }
+EOD
+|h %>
+</pre>
+<h2>Notes</h2>
+
+<p>To establish the ordering you desire for your message, you can group 
+and order field names to take advantage of the sorting behavior described 
+above.  For example, you might use field names like:</p>
+
+<pre>
+company_Name
+company_Phone
+company_address_1
+company_address_2
+company_city
+company_state
+company_zip
+
+desired_Reservation_date
+desired_group_size
+</pre>
+
+<p>Note that company_Name and company_Phone will sort above
+	company_address because of the upper-case letter in the
+	middle... whereas, company_city, _state and _zip don't need
+	any special treatment (beyond the "company_" grouping)
+	because their natural names already sort as expected.  
+	The reservation date and group-size fields are grouped by 
+	the "desired_" prefix, and ordered with the case-sensitivity
+	feature so that the Reservation_date is displayed before the 
+	group_size.</p>
+
+<p>Note carefully that (as already described above) all field
+	names are made lower-case, then converted to "Proper Case" 
+	for display.  So, the mechanism you use for specifying the 
+	order is completely hidden from the recipients of the 
+	message.  If you're trying to use the emailed message for
+	diagnostics, stop and Use the Source, Luke. :)</p>
+
+</%method>
+
+<%init>
+use MIME::Lite;
+my $DEBUG = $ARGS{DEBUG} || 0;
+if( $m->callers(0) eq $m->callers(-1) ) {
+	warn "returning NOT FOUND" if $DEBUG;
+	return 404;
+}
+</%init>
+<%perl>  
+
+
+my @errors;
+my $CGI_ARGS =  $ARGS{'CGI_ARGS'} || $ARGS{'ARGS'};
+if( $CGI_ARGS ) {
+	push @errors, "Invalid CGI_ARGS or ARGS parameter"
+		unless( ref( $CGI_ARGS ) =~ /^HASH/ );
+ } 
+ my @INTERNAL_PARMS = qw(to from subject body response);
+ my %REQUIRED_PARMS = ( map { $_ => 1 } qw(to from subject body) );
+ foreach ( @INTERNAL_PARMS ) {
+	push @errors, "Required internal parameter '$_' missing" unless ( $ARGS{$_} || !$REQUIRED_PARMS{$_} );
+	if( my $deleted = delete $CGI_ARGS->{$_} ) {
+		warn "removed URL argument $_: $deleted";
+	} # ensure they weren't trying to overwrite our copy of this parameter
+
+	$ARGS{"_$_"} = $ARGS{$_}; 	# move the parameter
+	delete $ARGS{$_}; 			# to its _'d version
+ }
+ %ARGS = ( %$CGI_ARGS, %ARGS );  # overwrite CGI-set values with internally-provided ones.
+ delete $ARGS{ARGS};
+ delete $ARGS{submit};
+
+if( $#errors > -1 ) {
+</%perl>
+	<h1>Development Errors:</H1>
+	<p>The following errors were found while serving mailer.mason:</P><ul>
+		<% map { "<li>$_\n" } @errors %>
+	</ul>
+	<p>Read the <a href="/doc.html?module="/mailer.mason">documentation</a> for more information.
+<%perl>
+	mc_abort();
+}
+my $pretty = sub {
+	my $l = my $k = shift;
+	$l =~ s/_/ /g;
+	$l = join " ", map {ucfirst lc $_} split " ", $l;
+	$l .= ": ";
+	$l .= "\n" if( $ARGS{$k} =~ /\n/ );
+	$l = "" if $l =~ /^Message: \n?$/;
+	if( ref( $ARGS{$k} ) eq 'ARRAY' ) {
+		$l .= join "\n    ", @{ $ARGS{$k} };
+	} else {
+		$l .= $ARGS{$k};
+	}
+	$l .= "\n" if( $ARGS{$k} =~ /\n/ );
+	$l .= "\n";
+	return $l;
+};
+
+my $message = $ARGS{'_contents'} || $ARGS{'_content'} || $ARGS{'_body'};
+{
+	my $m;
+	mc_comp( $$message, STORE => \$m, %$CGI_ARGS ), $message = $m if ref( $message );
+}
+
+my $extra_args;
+
+my $from = ( $ARGS{'_your_name'} || $ARGS{'your_name'} || $ARGS{'name'} ). " <". $ARGS{'_from'}. ">";
+
+my $first_pass_done = 0;
+PASS: foreach( sort keys %ARGS ) {
+	next if /^_/;
+	next if( ! /^[A-Z]/ && ! $first_pass_done );
+	$extra_args .=
+		&$pretty($_). ( $first_pass_done ? "" : "\n" );  # separated with an extra blank line
+	delete $ARGS{$_};                   # don't output these again later.
+}
+$first_pass_done = 1, goto PASS unless $first_pass_done;
+
+my $response;
+
+$message =~ s/\cM//g;
+$extra_args =~ s/\cM//g;
+
+if( $message ) {
+	my $mail = MIME::Lite->new( 
+		From     => $from,
+		To       => ( $ARGS{'_to'} ),
+		Subject  => ( $ARGS{'_subject'} ),
+		Type	 => 'text/plain',
+		Data	 => $message . $extra_args,
+ 	);
+
+	warn( "sending mail..." ) if $DEBUG;
+	unless( $mail->send ) {
+		return "couldn't deliver message";
+	} else {
+		warn "  done." if $DEBUG;
+	}
+}
+
+$response = $ARGS{'_response'} || $ARGS{'_body'};
+
+# replace $response with the result of the component, if applicable.
+{
+	my $m;
+	mc_comp( $$response, STORE => \$m, %$CGI_ARGS ), $response = $m if ref( $response );
+}
+
+$response =~ s/\cM//g;
+
+if( $response ) {
+	my $mail = MIME::Lite->new( 
+		From     => $ARGS{'_to'},
+		To       => $ARGS{'_from'},
+		Subject  => ( $ARGS{'_subject'} . ' Confirmation' ),
+		Data	 => $response. $extra_args,
+	);
+
+	warn "sending confirmation mail..." if $DEBUG;
+	$mail->send || return "couldn't send confirmation mail";
+	warn "  done." if $DEBUG;
+}
+
+</%perl>
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

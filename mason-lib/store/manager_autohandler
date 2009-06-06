@@ -1,0 +1,64 @@
+<%method CONTENT_TITLE>Store Manager</%method>
+<%method title>Store Manager</%method>
+<& SELF:PAGE_TOP, %ARGS &>
+% if( $m->base_comp->call_method('authenticate') ) {
+% 	$m->call_next;
+% } else {
+Permission Denied
+% }
+
+<%method vmenu>
+
+% if( $m->current_comp->parent() && $m->current_comp->parent->method_exists( 'HEADER_MENU' ) ) {
+%	my $hmc = $m->scomp( "PARENT:HEADER_MENU", %ARGS  );
+% 	if( $hmc ) {
+		<br><% $hmc %><br>
+%	}
+% }
+% my $hvmc = $m->scomp( "SELF:HEADER_VMENU", %ARGS  ) if $m->base_comp->method_exists("HEADER_VMENU");
+% if( $hvmc ) {
+	<br><% $hvmc %><br>
+% }
+% if( $m->current_comp->parent() && $m->current_comp->parent->method_exists( 'vmenu' ) ) {
+<br><& PARENT:vmenu &>
+% }
+</%method>
+
+<%method HEADER_VMENU>No local HEADER_VMENU defined</%method>
+<%method HEADER_MENU></%method>
+<%method PAGE_TOP>
+	<h1 style="margin-bottom:0"><& SELF:CONTENT_TITLE &></h1>    
+% if( $m->base_comp->call_method('authenticate', silent => 1 ) ) {
+	<h3 style="margin-top:0;margin-bottom:0"><a href="/store/catalog/index.html">Catalog Manager</a> | 
+% 	if( my $pending_orders = $m->comp('/store/shipping/pending.m:count') ) {
+	<a href="/store/shipping/pending.html"><font color=red><% $pending_orders %></font> Pending Orders</a> |
+% 	}
+	<a href="/store/vendor/edit.html?action=add">Add a Vendor</a> |
+	<a href="/support/agent/">Support Agents</a> |
+	<a href="/store/order/reports/index.html">Sales Reports</a> |
+% }
+% 	if( $m->current_comp->parent() && $m->current_comp->parent->method_exists( 'HEADER_MENU' ) ) {
+		| <& PARENT:HEADER_MENU, %ARGS &>\
+% 	}
+	</h3>
+	<p style="margin-top:0"><& SELF:HEADER_MENU, %ARGS &></p>
+</%method>
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>

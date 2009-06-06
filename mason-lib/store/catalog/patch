@@ -1,0 +1,24 @@
+45,46c45,46
+< if( $m->comp('/session/is_admin.m', area => 'Store Catalog Manager - Edit Items', 
+< 	role => [ 'catalog_edit_items' ],
+---
+> if( ! $ARGS{done} && $m->comp('/session/is_admin.m', area => 'Store Catalog Manager - Edit Items', 
+> 	role => [ 'site_admin', 'store_admin', 'catalog_edit_items' ],
+51c51
+< 	return 1 unless $ARGS{done};
+---
+> 	return 1;
+70c70
+---
+125c125
+< if( $ARGS{done} =~ /submit/i ) {
+---
+> if( ( $ARGS{done} =~ /submit/i ) && ! $is_admin ) {
+139c139
+< @{[ $ARGS{reviewer_comments} ? ('<b>Special Note</b>: <div style="border:2px solid red;padding:5px">'.
+---
+> @{[ ( $ARGS{reviewer_comments} ) ? ('<b>Special Note</b>: <div style="border:2px solid red;padding:5px">'.
+148c148
+< 	my $e = MIME::Lite->new(
+---
+> 	$e = MIME::Lite->new(

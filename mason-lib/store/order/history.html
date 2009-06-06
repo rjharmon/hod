@@ -1,0 +1,114 @@
+<%init>
+my $pager_options = {
+	table => 'orders',
+	order => 'purchase_date DESC',
+	where => "",#"( dev_only is null or ( dev_only <> 'x' and dev_only <> 1) )",
+	self_url => '/store/order/history.html',
+	definition => '/store/order/definition.m',
+	page_size => $ARGS{unlimited} ? 999999 : 50,
+	DEBUG => 0,
+};
+return $pager_options if $ARGS{opts};
+</%init>
+<%once>
+my $flip = 1;
+my $where_clause;
+</%once>
+<h2>Ordering History</h2>
+
+% unless( $m->comp('/session/validate.m', optional => 1 ) ) {
+<& /redir.m, immediate => 1, uri => '/support/list.html' &>
+% }
+
+<p>Here is the history of all orders we've received from <b><% $session->{vcode_email} %></b>.
+Depending on the delivery status of the order, you may place a fulfillment inquiry, track
+your package, or submit a Merchandise Return Request.</p>
+
+%# <& /db_pager.m, %$pager_options, mode => 'filter', args => \%ARGS &><br>
+
+<& /store/style.m &>
+
+% $where_clause = $m->comp('/db_pager.m', 
+%	%$pager_options, 
+%	mode => 'where_clause', 
+%	args => \%ARGS,
+% );
+<TABLE cellSpacing=0 cellPadding=3 border=1 cols="5" style="font-size: 8pt;border:2px solid black">
+<THEAD>
+<TR valign=bottom>
+<TD class=t_header align=center>Date/Order #<br>(click to view)</TD>
+<TD class=t_header align=center>Bill To/Ship To</TD>
+<TD class=t_header align=center>Total</TD>
+<TD class=t_header align=center>Fulfillment&nbsp;Status</td>
+</TR>
+</THEAD>
+<TBODY>
+<%def .pager_item>
+<%args>
+$item
+</%args>
+<!-- ITEM BEGIN -->
+% $flip = 1 - $flip;
+% my $class = $flip ? "t_row_even" : "t_row_odd";
+<tr valign=top>
+		<TD class="<% $class %>" align=center style="padding-right:8px"><nobr>
+		<a href="/store/order/v.e.h?i=<% $item->{order_number} %>">
+			<% $item->{purchase_date} %><br>
+			<% $item->{complete} ? $item->{order_number}: "failed order" %>
+		</a></nobr></TD>
+
+		<TD class="<% $class %>" align=left><nobr><% $item->{billto_name} %>
+%		if( $item->{billto_name} ne $item->{shipto_name} ) {
+			<br><% $item->{shipto_name} %></nobr>
+% 		}
+		</TD>
+		<TD class="<% $class %>" align=right><nobr><% $item->{total} %></nobr></TD>
+		<td class="<% $class %>"><nobr><% $item->{fulfill_status} || 'Pending' %></nobr><br>
+%		if( $item->{fulfill_status} eq 'Shipped' ) {
+			<a href="/store/order/track.html?order=<% $item->{order_number} %>">Package Tracking</a><br>
+			<a href="/support/edit.html?action=add&order=<% $item->{order_number} %>&type=Product+Return">Product Returns</a>
+%		} else {
+			<a href="/support/edit.html?action=add&which_order=<% $item->{order_number} %>&type=Fulfillment+Inquiry">Open a Fulfillment Inquiry</a>
+%		}
+		</td>
+	</tr>
+<!--ITEM END -->
+</%def>
+
+<& /db_pager.m,
+	%$pager_options,
+	mode => 'list',
+	args => \%ARGS,
+	order => 'purchase_date ASC'
+&>
+
+</table>
+
+<center><& /db_pager.m, %$pager_options, mode => 'index', args => \%ARGS &></center>
+
+
+
+<%def .not_found>
+<tr><td colspan="100%">No Records found</td></tr>
+</%def>
+
+
+
+<%method .license>
+
+Copyright 1999-2009 Randy Harmon
+
+Hod is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or   
+(at your option) any later version.
+
+Hod is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+GNU General Public License for more details (in the LICENSE file).           
+    
+You should have received a copy of the GNU General Public License
+along with Hod.  If not, see <http://www.gnu.org/licenses/>.
+
+</%method>
